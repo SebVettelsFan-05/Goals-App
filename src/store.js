@@ -5,14 +5,25 @@ const KEY = 'momentum.v1';
 
 function load() {
   try {
-    return JSON.parse(localStorage.getItem(KEY)) || fresh();
+    const parsed = JSON.parse(localStorage.getItem(KEY));
+    // Merge defaults so older saved states gain new fields (weights/goal).
+    return parsed ? { ...fresh(), ...parsed } : fresh();
   } catch {
     return fresh();
   }
 }
 function fresh() {
-  return { events: [], habits: [], notified: {} };
+  return { events: [], habits: [], notified: {}, weights: [], goal: { target: null, unit: 'lb' } };
 }
+
+// Behaviors proven to matter for a lean cut — seeded in one tap.
+export const LEAN_PACK = [
+  { name: 'Hit protein', time: '12:00' },
+  { name: 'Train', time: '17:00' },
+  { name: '10k steps', time: '19:00' },
+  { name: 'No late snack', time: '21:00' },
+  { name: '7h+ sleep', time: '22:30' },
+];
 
 function notify(title, body) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
@@ -135,7 +146,45 @@ export function useMomentum() {
   const deleteHabit = (id) =>
     setState((p) => ({ ...p, habits: p.habits.filter((h) => h.id !== id) }));
 
-  return { state, addEvent, toggleEvent, deleteEvent, toggleHabit, saveHabit, deleteHabit };
+  // Upsert today's weigh-in (one entry per day; latest wins).
+  const logWeight = (value) =>
+    setState((p) => {
+      const v = parseFloat(value);
+      if (!isFinite(v) || v <= 0) return p;
+      const d = todayStr();
+      const others = (p.weights || []).filter((w) => w.date !== d);
+      return { ...p, weights: [...others, { date: d, value: v }] };
+    });
+
+  const deleteWeight = (date) =>
+    setState((p) => ({ ...p, weights: (p.weights || []).filter((w) => w.date !== date) }));
+
+  const setGoal = (goal) => setState((p) => ({ ...p, goal: { ...p.goal, ...goal } }));
+
+  const seedLeanPack = () =>
+    setState((p) => {
+      const existing = new Set(p.habits.map((h) => h.name));
+      const toAdd = LEAN_PACK.filter((h) => !existing.has(h.name)).map((h) => ({
+        id: uid(),
+        history: {},
+        ...h,
+      }));
+      return { ...p, habits: [...p.habits, ...toAdd] };
+    });
+
+  return {
+    state,
+    addEvent,
+    toggleEvent,
+    deleteEvent,
+    toggleHabit,
+    saveHabit,
+    deleteHabit,
+    logWeight,
+    deleteWeight,
+    setGoal,
+    seedLeanPack,
+  };
 }
 
 export async function requestNotifications() {

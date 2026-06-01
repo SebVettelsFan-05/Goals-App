@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMomentum, requestNotifications } from './store.js';
-import { fmt, nowMinutes, streakOf, toMin, todayStr } from './utils.js';
+import { fmt, nowMinutes, streakOf, toMin, todayStr, weightStats } from './utils.js';
 
 export default function App() {
   const store = useMomentum();
@@ -184,11 +184,25 @@ export default function App() {
             <button className="add-habit-btn" onClick={() => setEditing({})}>
               + New habit
             </button>
+            <button
+              className="add-habit-btn"
+              style={{ borderStyle: 'solid', background: 'var(--accent-soft)', color: 'var(--text)' }}
+              onClick={() => store.seedLeanPack()}
+            >
+              🔥 Add Lean Summer pack
+            </button>
           </section>
         )}
+
+        {tab === 'weight' && <WeightView store={store} />}
       </main>
 
-      <form className="quick-add" onSubmit={submit} autoComplete="off">
+      <form
+        className="quick-add"
+        onSubmit={submit}
+        autoComplete="off"
+        style={tab === 'weight' ? { display: 'none' } : undefined}
+      >
         <input
           type="text"
           placeholder="Add  e.g.  Gym 7pm"
@@ -209,6 +223,9 @@ export default function App() {
         </button>
         <button className={'tab' + (tab === 'habits' ? ' active' : '')} onClick={() => setTab('habits')}>
           <span>✓</span>Habits
+        </button>
+        <button className={'tab' + (tab === 'weight' ? ' active' : '')} onClick={() => setTab('weight')}>
+          <span>⚖</span>Weight
         </button>
       </nav>
 
@@ -297,5 +314,156 @@ function HabitModal({ habit, onClose, onSave, onDelete }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function WeightView({ store }) {
+  const { state } = store;
+  const unit = state.goal?.unit || 'lb';
+  const target = state.goal?.target ?? null;
+  const [entry, setEntry] = useState('');
+  const [goalInput, setGoalInput] = useState(target != null ? String(target) : '');
+
+  const stats = useMemo(() => weightStats(state.weights, target), [state.weights, target]);
+  const loggedToday = (state.weights || []).some((w) => w.date === todayStr());
+
+  const submitWeight = (e) => {
+    e.preventDefault();
+    if (entry.trim()) {
+      store.logWeight(entry);
+      setEntry('');
+    }
+  };
+
+  const losing = stats && stats.ratePerWeek < -0.01;
+  const tooFast = stats && stats.pctPerWeek > 1.0;
+  const rateLabel = stats
+    ? `${stats.ratePerWeek > 0 ? '+' : ''}${stats.ratePerWeek.toFixed(1)} ${unit}/wk`
+    : '—';
+
+  return (
+    <section className="view">
+      <header className="view-header">
+        <h1>Weight</h1>
+        <button
+          className="unit-toggle"
+          onClick={() => store.setGoal({ unit: unit === 'lb' ? 'kg' : 'lb' })}
+        >
+          {unit}
+        </button>
+      </header>
+
+      <div className="stat-grid">
+        <div className="stat">
+          <div className="stat-num">{stats ? stats.current.toFixed(1) : '—'}</div>
+          <div className="stat-label">Trend ({unit})</div>
+        </div>
+        <div className="stat">
+          <div className={'stat-num' + (losing ? ' good' : '')}>{rateLabel}</div>
+          <div className="stat-label">Weekly rate</div>
+        </div>
+        <div className="stat">
+          <div className="stat-num">{target != null ? target : '—'}</div>
+          <div className="stat-label">Goal ({unit})</div>
+        </div>
+      </div>
+
+      {stats && stats.pts.length >= 2 ? (
+        <WeightChart stats={stats} target={target} unit={unit} />
+      ) : (
+        <div className="tl-empty">Log a few days to see your trend line.</div>
+      )}
+
+      {stats && (
+        <div className="projection">
+          {target == null ? (
+            'Set a goal weight below to get a projected finish date.'
+          ) : tooFast ? (
+            `⚠️ You're cutting ${stats.pctPerWeek.toFixed(1)}%/wk — fast enough to risk muscle. Aim for 0.5–1%.`
+          ) : stats.etaDate ? (
+            <>
+              On track to hit <b>{target} {unit}</b> around{' '}
+              <b>
+                {new Date(stats.etaDate + 'T00:00').toLocaleDateString(undefined, {
+                  month: 'short',
+                  day: 'numeric',
+                })}
+              </b>{' '}
+              ({Math.round(stats.weeksToGo)} weeks). Healthy pace at {stats.pctPerWeek.toFixed(1)}%/wk.
+            </>
+          ) : losing === false && stats.current > target ? (
+            'Not trending down yet — log consistently and check the deficit.'
+          ) : (
+            'Keep logging to refine the projection.'
+          )}
+        </div>
+      )}
+
+      <form className="weight-entry" onSubmit={submitWeight}>
+        <input
+          type="number"
+          inputMode="decimal"
+          step="0.1"
+          placeholder={loggedToday ? 'Update today’s weight' : `Today’s weight (${unit})`}
+          value={entry}
+          onChange={(e) => setEntry(e.target.value)}
+        />
+        <button type="submit">{loggedToday ? 'Update' : 'Log'}</button>
+      </form>
+
+      <div className="goal-row">
+        <label>Goal weight ({unit})</label>
+        <div>
+          <input
+            type="number"
+            inputMode="decimal"
+            step="0.1"
+            placeholder="e.g. 175"
+            value={goalInput}
+            onChange={(e) => setGoalInput(e.target.value)}
+          />
+          <button
+            onClick={() => store.setGoal({ target: goalInput ? parseFloat(goalInput) : null })}
+          >
+            Set
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function WeightChart({ stats, target, unit }) {
+  const W = 320;
+  const H = 150;
+  const pad = { l: 6, r: 6, t: 10, b: 18 };
+  const raw = stats.pts.map((p, i) => ({ x: p.x, y: p.y, s: stats.smoothed[i], date: p.date }));
+
+  const ys = raw.flatMap((p) => [p.y, p.s]).concat(target != null ? [target] : []);
+  let min = Math.min(...ys);
+  let max = Math.max(...ys);
+  if (max - min < 2) {
+    min -= 1;
+    max += 1;
+  }
+  const xs = raw.map((p) => p.x);
+  const xMin = Math.min(...xs);
+  const xMax = Math.max(...xs);
+  const sx = (x) => pad.l + ((x - xMin) / (xMax - xMin || 1)) * (W - pad.l - pad.r);
+  const sy = (y) => pad.t + (1 - (y - min) / (max - min || 1)) * (H - pad.t - pad.b);
+
+  const smoothPath = raw.map((p, i) => `${i ? 'L' : 'M'}${sx(p.x).toFixed(1)},${sy(p.s).toFixed(1)}`).join(' ');
+  const goalY = target != null ? sy(target) : null;
+
+  return (
+    <svg className="weight-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+      {goalY != null && (
+        <line x1={pad.l} y1={goalY} x2={W - pad.r} y2={goalY} className="goal-line" />
+      )}
+      {raw.map((p, i) => (
+        <circle key={i} cx={sx(p.x)} cy={sy(p.y)} r="2.2" className="dot" />
+      ))}
+      <path d={smoothPath} className="trend" fill="none" />
+    </svg>
   );
 }
