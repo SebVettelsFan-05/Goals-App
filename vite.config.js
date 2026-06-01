@@ -24,6 +24,9 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/api\//],
+        // Pull in our push/notification handlers so reminders work when closed.
+        importScripts: ['push-sw.js'],
       },
       devOptions: { enabled: true },
     }),

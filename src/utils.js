@@ -124,3 +124,19 @@ export function weightStats(weights, target) {
 
   return { sorted, pts, smoothed, current, ratePerWeek, weeksToGo, etaDate, pctPerWeek };
 }
+
+// Habit consistency over the last 7 days (including today).
+export function weeklyHabitStats(habits, today = todayStr()) {
+  const days = Array.from({ length: 7 }, (_, i) => addDays(today, -i));
+  let done = 0;
+  let total = 0;
+  let bestStreak = 0;
+  habits.forEach((h) => {
+    bestStreak = Math.max(bestStreak, streakOf(h));
+    days.forEach((d) => {
+      total += 1;
+      if (h.history && h.history[d]) done += 1;
+    });
+  });
+  return { done, total, rate: total ? done / total : null, bestStreak, days: days.length };
+}

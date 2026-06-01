@@ -46,11 +46,39 @@ Once it's live over HTTPS, open the URL on your phone and **Add to Home Screen**
 `vite-plugin-pwa` generates the service worker and precaches the app shell, so it loads and works
 with no connection. Updates activate automatically on the next load (`registerType: 'autoUpdate'`).
 
-## Notifications (honest version)
+## Background notifications (Web Push)
 
-Nudges for events and habit reminders fire while the app is **open or installed on the home
-screen**. Notifying you when it's been fully closed for hours needs a push server — a deliberate
-v2 step, not built yet. Installed-on-home-screen covers daily use well.
+Reminders fire **even when the app is fully closed** via Web Push. This needs a small backend,
+which is included as Vercel serverless functions (`api/`). It's optional — without it the app
+still works and falls back to in-app reminders.
+
+**What's included:** `public/push-sw.js` (receives pushes), `api/subscribe.js` (stores a device's
+subscription + reminder schedule), `api/tick.js` (cron endpoint that sends due reminders, with a
+15-minute grace window), and a daily Vercel cron in `vercel.json`.
+
+**To turn it on, set these env vars in Vercel → Project → Settings → Environment Variables:**
+
+| Var | Value |
+|---|---|
+| `VAPID_PUBLIC_KEY` | the public key (same one in `.env`) |
+| `VAPID_PRIVATE_KEY` | the private key from `npx web-push generate-vapid-keys` |
+| `VAPID_SUBJECT` | `mailto:you@example.com` |
+| `CRON_SECRET` | any random string (protects `/api/tick`) |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | from a Vercel KV store (Storage tab → Create → KV) |
+
+Then **re-deploy**. On your phone, install to the home screen and tap **Enable** — iOS requires the
+PWA be installed (iOS 16.4+) for push to work.
+
+**Timing precision:** Vercel's free (Hobby) cron runs only **once a day**, so the built-in cron
+alone won't give minute-accurate reminders. For real-time nudges, point a free external cron
+(e.g. cron-job.org, every 1 min) at:
+
+```
+https://YOUR-APP.vercel.app/api/tick?key=YOUR_CRON_SECRET
+```
+
+(Or upgrade to Vercel Pro and change `vercel.json`'s schedule to `* * * * *`.) The endpoint is
+idempotent — it never sends the same reminder twice in a day.
 
 ## Quick-add syntax
 
@@ -71,9 +99,16 @@ index.html          Vite entry
 vite.config.js      Vite + PWA (offline) config
 src/
   main.jsx          mounts React, registers the service worker
-  App.jsx           UI: Now / Today / Habits views + habit modal
-  store.js          useMomentum hook — state, localStorage, notifications
-  utils.js          time helpers + quick-add parser (pure, testable)
+  App.jsx           UI: Now / Today / Habits / Weight views, weekly check-in, modals
+  store.js          useMomentum hook — state, localStorage, push subscribe/sync
+  utils.js          time helpers, quick-add parser, weight trend + weekly stats (pure)
   styles.css        styling (auto light/dark)
-public/icon.svg     app icon
+public/
+  icon.svg          app icon
+  push-sw.js        push + notification-tap handlers (imported by the SW)
+api/
+  subscribe.js      store a device's push subscription + reminder schedule
+  tick.js           cron endpoint — sends due reminders (15-min grace window)
+lib/kv.js           tiny Upstash/Vercel-KV REST helper (no SDK)
+vercel.json         Vercel cron config
 ```

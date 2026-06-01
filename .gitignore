@@ -3,4 +3,6 @@ dist
 dev-dist
 .DS_Store
 *.local
+.env.local
 .vite
+.vercel

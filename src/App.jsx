@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useMomentum, requestNotifications } from './store.js';
-import { fmt, nowMinutes, streakOf, toMin, todayStr, weightStats } from './utils.js';
+import { useMomentum } from './store.js';
+import { fmt, nowMinutes, streakOf, toMin, todayStr, weightStats, weeklyHabitStats } from './utils.js';
 
 export default function App() {
   const store = useMomentum();
@@ -118,6 +118,8 @@ export default function App() {
                 })}
               </div>
             </div>
+
+            <WeeklyCheckin store={store} />
           </section>
         )}
 
@@ -176,7 +178,7 @@ export default function App() {
                       <div className="name">{h.name}</div>
                       <div className="meta">Reminder {fmt(h.time || '08:00')}</div>
                     </div>
-                    <span className={'streak' + (s >= 3 ? ' hot' : '')}>{s > 0 ? `🔥 ${s}` : 'start'}</span>
+                    <span className={'streak' + (s >= 3 ? ' hot' : '')}>{s > 0 ? `${s}d` : 'start'}</span>
                   </div>
                 );
               })}
@@ -189,7 +191,7 @@ export default function App() {
               style={{ borderStyle: 'solid', background: 'var(--accent-soft)', color: 'var(--text)' }}
               onClick={() => store.seedLeanPack()}
             >
-              🔥 Add Lean Summer pack
+              Add Lean Summer pack
             </button>
           </section>
         )}
@@ -216,16 +218,16 @@ export default function App() {
 
       <nav className="tabbar">
         <button className={'tab' + (tab === 'now' ? ' active' : '')} onClick={() => setTab('now')}>
-          <span>◎</span>Now
+          Now
         </button>
         <button className={'tab' + (tab === 'today' ? ' active' : '')} onClick={() => setTab('today')}>
-          <span>▤</span>Today
+          Today
         </button>
         <button className={'tab' + (tab === 'habits' ? ' active' : '')} onClick={() => setTab('habits')}>
-          <span>✓</span>Habits
+          Habits
         </button>
         <button className={'tab' + (tab === 'weight' ? ' active' : '')} onClick={() => setTab('weight')}>
-          <span>⚖</span>Weight
+          Weight
         </button>
       </nav>
 
@@ -249,7 +251,7 @@ export default function App() {
           <span>Turn on notifications so I can nudge you.</span>
           <button
             onClick={async () => {
-              const r = await requestNotifications();
+              const r = await store.enableNotifications();
               setNotifyState(r);
             }}
           >
@@ -379,7 +381,7 @@ function WeightView({ store }) {
           {target == null ? (
             'Set a goal weight below to get a projected finish date.'
           ) : tooFast ? (
-            `⚠️ You're cutting ${stats.pctPerWeek.toFixed(1)}%/wk — fast enough to risk muscle. Aim for 0.5–1%.`
+            `Cutting ${stats.pctPerWeek.toFixed(1)}%/wk — fast enough to risk muscle. Aim for 0.5–1%.`
           ) : stats.etaDate ? (
             <>
               On track to hit <b>{target} {unit}</b> around{' '}
@@ -465,5 +467,51 @@ function WeightChart({ stats, target, unit }) {
       ))}
       <path d={smoothPath} className="trend" fill="none" />
     </svg>
+  );
+}
+
+function WeeklyCheckin({ store }) {
+  const { state } = store;
+  const unit = state.goal?.unit || 'lb';
+  const target = state.goal?.target ?? null;
+
+  const hab = useMemo(() => weeklyHabitStats(state.habits), [state.habits]);
+  const stats = useMemo(() => weightStats(state.weights, target), [state.weights, target]);
+
+  const ratePct = hab.rate == null ? null : Math.round(hab.rate * 100);
+  const weightChange = stats ? stats.ratePerWeek : null;
+  const losing = weightChange != null && weightChange < -0.01;
+
+  // Nothing to summarize yet.
+  if (!state.habits.length && !stats) return null;
+
+  // A short, honest read on the week.
+  let verdict;
+  if (ratePct != null && ratePct >= 80 && losing) verdict = 'Strong week — habits locked in and trending down.';
+  else if (losing) verdict = 'Trending down. Tighten the habits to speed it up.';
+  else if (ratePct != null && ratePct >= 80) verdict = 'Habits are solid — keep logging weight to confirm the deficit.';
+  else verdict = 'Inconsistent week. Pick one habit to nail every day next week.';
+
+  return (
+    <div className="checkin">
+      <div className="strip-label">This week</div>
+      <div className="checkin-row">
+        <div className="checkin-stat">
+          <div className="checkin-num">{ratePct == null ? '—' : `${ratePct}%`}</div>
+          <div className="checkin-label">Habits hit</div>
+        </div>
+        <div className="checkin-stat">
+          <div className={'checkin-num' + (losing ? ' good' : '')}>
+            {weightChange == null ? '—' : `${weightChange > 0 ? '+' : ''}${weightChange.toFixed(1)}`}
+          </div>
+          <div className="checkin-label">{unit}/week</div>
+        </div>
+        <div className="checkin-stat">
+          <div className="checkin-num">{hab.bestStreak || 0}</div>
+          <div className="checkin-label">Best streak</div>
+        </div>
+      </div>
+      <div className="checkin-verdict">{verdict}</div>
+    </div>
   );
 }

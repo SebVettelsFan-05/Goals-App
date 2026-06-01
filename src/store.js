@@ -46,6 +46,63 @@ function notify(title, body) {
   }
 }
 
+// ---- Web Push (real background reminders) ----
+const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+export const pushAvailable =
+  !!VAPID_PUBLIC && 'serviceWorker' in navigator && 'PushManager' in window;
+
+function urlBase64ToUint8Array(base64) {
+  const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(b64);
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
+// Turn the user's habits/events into a server-side reminder schedule.
+function buildSchedule(s) {
+  const items = [];
+  s.habits.forEach((h) =>
+    items.push({
+      id: `hb:${h.id}`,
+      time: h.time || '08:00',
+      title: h.name,
+      body: 'Habit check — open to mark it done.',
+      daily: true,
+    })
+  );
+  (s.events || [])
+    .filter((e) => e.time && e.date >= todayStr() && !e.done)
+    .forEach((e) =>
+      items.push({ id: `ev:${e.id}`, time: e.time, date: e.date, title: e.title, body: 'Time for this.' })
+    );
+  // Sunday evening weekly check-in.
+  items.push({
+    id: 'weekly',
+    time: '18:00',
+    dow: 0,
+    title: 'Weekly check-in',
+    body: 'See how your week went and line up next week.',
+  });
+  return items;
+}
+
+async function syncPushSubscription(s) {
+  if (!pushAvailable || Notification.permission !== 'granted') return;
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC),
+    });
+  }
+  await fetch('/api/subscribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subscription: sub, schedule: buildSchedule(s), tz: new Date().getTimezoneOffset() }),
+  });
+}
+
 export function useMomentum() {
   const [state, setState] = useState(load);
   const [, forceTick] = useState(0); // re-render the clock every 30s
@@ -56,6 +113,11 @@ export function useMomentum() {
   useEffect(() => {
     localStorage.setItem(KEY, JSON.stringify(state));
   }, [state]);
+
+  // Keep the push backend's schedule in sync (also subscribes on load if granted).
+  useEffect(() => {
+    syncPushSubscription(stateRef.current).catch(() => {});
+  }, [state.habits, state.events, state.goal]);
 
   // Tick: refresh clock, reset day, and fire due notifications.
   useEffect(() => {
@@ -172,6 +234,18 @@ export function useMomentum() {
       return { ...p, habits: [...p.habits, ...toAdd] };
     });
 
+  // Ask permission, then (if granted) subscribe to push and push the schedule.
+  const enableNotifications = async () => {
+    if (!('Notification' in window)) return 'unsupported';
+    const perm = await Notification.requestPermission();
+    if (perm === 'granted') {
+      try {
+        await syncPushSubscription(stateRef.current);
+      } catch {}
+    }
+    return perm;
+  };
+
   return {
     state,
     addEvent,
@@ -184,10 +258,6 @@ export function useMomentum() {
     deleteWeight,
     setGoal,
     seedLeanPack,
+    enableNotifications,
   };
-}
-
-export async function requestNotifications() {
-  if (!('Notification' in window)) return 'unsupported';
-  return Notification.requestPermission();
 }
