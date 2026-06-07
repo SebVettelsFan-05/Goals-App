@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMomentum } from './store.js';
 import { useInstall } from './install.js';
 import TrainView from './Train.jsx';
@@ -10,6 +10,39 @@ const lastDays = (n) => Array.from({ length: n }, (_, i) => addDays(todayStr(), 
 const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 const greeting = (h) => (h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening');
+
+const prefersReducedMotion =
+  typeof window !== 'undefined' &&
+  window.matchMedia &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Eases a number from 0 (on mount) or its previous value up to `value`.
+function useCountUp(value, duration = 600) {
+  const [display, setDisplay] = useState(prefersReducedMotion ? Number(value) || 0 : 0);
+  const fromRef = useRef(prefersReducedMotion ? Number(value) || 0 : 0);
+  useEffect(() => {
+    const from = fromRef.current;
+    const to = Number(value) || 0;
+    if (prefersReducedMotion || from === to) {
+      fromRef.current = to;
+      setDisplay(to);
+      return;
+    }
+    let raf;
+    const start = performance.now();
+    const step = (t) => {
+      const p = Math.min(1, (t - start) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      const v = from + (to - from) * eased;
+      setDisplay(v);
+      if (p < 1) raf = requestAnimationFrame(step);
+      else fromRef.current = to;
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [value, duration]);
+  return display;
+}
 
 export default function App() {
   const store = useMomentum();
@@ -89,8 +122,6 @@ export default function App() {
             <HomeHabits store={store} onManage={() => setTab('habits')} />
 
             <Heatmap habits={store.state.habits} />
-
-            <WeeklyCheckin store={store} />
           </section>
         )}
 
@@ -366,6 +397,7 @@ function WeightCard({ store, onOpen }) {
   const rateLabel = stats
     ? `${stats.ratePerWeek > 0 ? '+' : ''}${stats.ratePerWeek.toFixed(1)} ${unit}/wk`
     : null;
+  const animated = useCountUp(stats ? stats.current : 0);
 
   return (
     <div className="card">
@@ -378,7 +410,7 @@ function WeightCard({ store, onOpen }) {
 
       <div className="weight-hero">
         <div className="weight-now">
-          {stats ? stats.current.toFixed(1) : '—'}
+          {stats ? animated.toFixed(1) : '—'}
           <span className="unit">{unit}</span>
         </div>
         {rateLabel && <div className={'rate-pill' + (losing ? ' good' : '')}>{rateLabel}</div>}
@@ -462,7 +494,7 @@ function BodyView({ store, sub, setSub }) {
           Steps
         </button>
       </div>
-      {sub === 'weight' ? <WeightView store={store} /> : <StepsView store={store} />}
+      {sub === 'weight' ? <WeightView store={store} embedded /> : <StepsView store={store} embedded />}
     </section>
   );
 }
@@ -495,7 +527,15 @@ function useInsights(store) {
   if (hab.rate != null) lines.push(`Habits ${Math.round(hab.rate * 100)}% this week${hab.bestStreak ? ` · best streak ${hab.bestStreak}d` : ''}.`);
   if (gym.topDay != null && gym.count30 >= 3) lines.push(`You train most on ${DOWS[gym.topDay]}s.`);
 
-  return { tiles, lines, gym };
+  // A single holistic read on the week (folded in from the old check-in card).
+  const ratePct = hab.rate == null ? null : Math.round(hab.rate * 100);
+  let verdict;
+  if (ratePct != null && ratePct >= 80 && losing) verdict = 'Strong week — habits locked in and trending down.';
+  else if (losing) verdict = 'Trending down. Tighten the habits to speed it up.';
+  else if (ratePct != null && ratePct >= 80) verdict = 'Habits solid — keep logging weight to confirm the deficit.';
+  else verdict = 'Steady. Pick one habit to nail every day this week.';
+
+  return { tiles, lines, gym, verdict, bestStreak: hab.bestStreak };
 }
 
 function MetricTiles({ tiles }) {
@@ -512,7 +552,7 @@ function MetricTiles({ tiles }) {
 }
 
 function Insights({ store, onOpen }) {
-  const { tiles, lines } = useInsights(store);
+  const { tiles, verdict, bestStreak } = useInsights(store);
   return (
     <button className="card insights-card" onClick={onOpen}>
       <div className="card-head">
@@ -520,7 +560,10 @@ function Insights({ store, onOpen }) {
         <span className="link-btn">Details ›</span>
       </div>
       <MetricTiles tiles={tiles} />
-      {lines[0] && <div className="insight-lead">{lines[0]}</div>}
+      <div className="insight-lead">
+        {verdict}
+        {bestStreak ? <span className="streak-chip">{bestStreak}d best streak</span> : null}
+      </div>
     </button>
   );
 }
@@ -690,7 +733,7 @@ function SearchOverlay({ store, onClose, go }) {
 
 /* ---------------- Weight tab (details) ---------------- */
 
-function WeightView({ store }) {
+function WeightView({ store, embedded }) {
   const { state } = store;
   const unit = state.goal?.unit || 'lb';
   const target = state.goal?.target ?? null;
@@ -715,9 +758,9 @@ function WeightView({ store }) {
     : '—';
 
   return (
-    <section className="view">
-      <header className="view-header">
-        <h1>Weight</h1>
+    <section className={embedded ? '' : 'view'}>
+      <header className={embedded ? 'embed-head' : 'view-header'}>
+        {!embedded && <h1>Weight</h1>}
         <button className="unit-toggle" onClick={() => store.setGoal({ unit: unit === 'lb' ? 'kg' : 'lb' })}>
           {unit}
         </button>
@@ -860,32 +903,6 @@ function WeightChart({ stats, target, unit, height = 160 }) {
   );
 }
 
-function ProgressRing({ pct, size = 60, stroke = 6 }) {
-  const r = (size - stroke) / 2;
-  const c = 2 * Math.PI * r;
-  const off = c * (1 - (pct || 0) / 100);
-  return (
-    <svg width={size} height={size} className="ring" viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={size / 2} cy={size / 2} r={r} className="ring-bg" strokeWidth={stroke} fill="none" />
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        className="ring-fg"
-        strokeWidth={stroke}
-        fill="none"
-        strokeDasharray={c}
-        strokeDashoffset={off}
-        strokeLinecap="round"
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-      />
-      <text x="50%" y="50%" className="ring-text" textAnchor="middle" dominantBaseline="central">
-        {pct == null ? '—' : `${pct}%`}
-      </text>
-    </svg>
-  );
-}
-
 function GoalBar({ start, current, goal, unit }) {
   if (goal == null || start == null || current == null || start <= goal) return null;
   const total = start - goal;
@@ -999,6 +1016,7 @@ function StepsCard({ store, onOpen }) {
   const stats = useMemo(() => stepsStats(state.steps, goal), [state.steps, goal]);
   const todayVal = (state.steps || []).find((s) => s.date === todayStr())?.value;
   const hitToday = todayVal != null && todayVal >= goal;
+  const animated = useCountUp(todayVal ?? 0);
 
   const submit = (e) => {
     e.preventDefault();
@@ -1019,7 +1037,7 @@ function StepsCard({ store, onOpen }) {
 
       <div className="weight-hero">
         <div className="weight-now">
-          {fmtN(stats?.todayVal ?? null)}
+          {todayVal != null ? fmtN(animated) : '—'}
           <span className="unit">today</span>
         </div>
         {stats && <div className={'rate-pill' + (hitToday ? ' good' : '')}>{stats.daysHitWeek}/7 days hit</div>}
@@ -1048,7 +1066,7 @@ function StepsCard({ store, onOpen }) {
   );
 }
 
-function StepsView({ store }) {
+function StepsView({ store, embedded }) {
   const { state } = store;
   const goal = state.stepGoal || 10000;
   const [entry, setEntry] = useState('');
@@ -1073,10 +1091,12 @@ function StepsView({ store }) {
   }
 
   return (
-    <section className="view">
-      <header className="view-header">
-        <h1>Steps</h1>
-      </header>
+    <section className={embedded ? '' : 'view'}>
+      {!embedded && (
+        <header className="view-header">
+          <h1>Steps</h1>
+        </header>
+      )}
 
       <div className="stat-grid">
         <div className="stat">
@@ -1142,50 +1162,6 @@ function StepsView({ store }) {
         </div>
       </div>
     </section>
-  );
-}
-
-function WeeklyCheckin({ store }) {
-  const { state } = store;
-  const unit = state.goal?.unit || 'lb';
-  const target = state.goal?.target ?? null;
-
-  const hab = useMemo(() => weeklyHabitStats(state.habits), [state.habits]);
-  const stats = useMemo(() => weightStats(state.weights, target), [state.weights, target]);
-
-  const ratePct = hab.rate == null ? null : Math.round(hab.rate * 100);
-  const weightChange = stats ? stats.ratePerWeek : null;
-  const losing = weightChange != null && weightChange < -0.01;
-
-  if (!state.habits.length && !stats) return null;
-
-  let verdict;
-  if (ratePct != null && ratePct >= 80 && losing) verdict = 'Strong week — habits locked in and trending down.';
-  else if (losing) verdict = 'Trending down. Tighten the habits to speed it up.';
-  else if (ratePct != null && ratePct >= 80) verdict = 'Habits are solid — keep logging weight to confirm the deficit.';
-  else verdict = 'Inconsistent week. Pick one habit to nail every day next week.';
-
-  return (
-    <div className="card">
-      <div className="card-label">This week</div>
-      <div className="checkin-row">
-        <div className="checkin-stat">
-          <ProgressRing pct={ratePct} />
-          <div className="checkin-label">Habits hit</div>
-        </div>
-        <div className="checkin-stat">
-          <div className={'checkin-num' + (losing ? ' good' : '')}>
-            {weightChange == null ? '—' : `${weightChange > 0 ? '+' : ''}${weightChange.toFixed(1)}`}
-          </div>
-          <div className="checkin-label">{unit}/week</div>
-        </div>
-        <div className="checkin-stat">
-          <div className="checkin-num">{hab.bestStreak || 0}</div>
-          <div className="checkin-label">Best streak</div>
-        </div>
-      </div>
-      <div className="checkin-verdict">{verdict}</div>
-    </div>
   );
 }
 
