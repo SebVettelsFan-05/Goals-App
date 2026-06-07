@@ -1,12 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
-import { fmt, nowMinutes, parseQuickAdd, toMin, todayStr, uid } from './utils.js';
+import { fmt, nowMinutes, parseQuickAdd, slug, toMin, todayStr, uid } from './utils.js';
 
 const KEY = 'momentum.v1';
+
+// A starter exercise library so the tracker is usable immediately.
+const DEFAULT_EXERCISES = [
+  ['Bench Press', 'Chest'], ['Incline Dumbbell Press', 'Chest'], ['Chest Fly', 'Chest'], ['Push-up', 'Chest'],
+  ['Deadlift', 'Back'], ['Pull-up', 'Back'], ['Barbell Row', 'Back'], ['Lat Pulldown', 'Back'], ['Seated Cable Row', 'Back'],
+  ['Squat', 'Legs'], ['Leg Press', 'Legs'], ['Romanian Deadlift', 'Legs'], ['Walking Lunge', 'Legs'], ['Leg Curl', 'Legs'], ['Leg Extension', 'Legs'], ['Calf Raise', 'Legs'],
+  ['Overhead Press', 'Shoulders'], ['Lateral Raise', 'Shoulders'], ['Face Pull', 'Shoulders'],
+  ['Bicep Curl', 'Arms'], ['Hammer Curl', 'Arms'], ['Tricep Pushdown', 'Arms'], ['Skullcrusher', 'Arms'],
+  ['Plank', 'Core'], ['Hanging Leg Raise', 'Core'], ['Cable Crunch', 'Core'],
+  ['Treadmill', 'Cardio'], ['Cycling', 'Cardio'], ['Rowing', 'Cardio'],
+];
+function defaultExercises() {
+  return DEFAULT_EXERCISES.map(([name, category]) => ({ id: 'd_' + slug(name), name, category }));
+}
+
+export const EXERCISE_CATEGORIES = ['Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core', 'Cardio', 'Other'];
 
 function load() {
   try {
     const parsed = JSON.parse(localStorage.getItem(KEY));
-    // Merge defaults so older saved states gain new fields (weights/goal).
+    // Merge defaults so older saved states gain new fields.
     return parsed ? { ...fresh(), ...parsed } : fresh();
   } catch {
     return fresh();
@@ -21,6 +37,10 @@ function fresh() {
     goal: { target: null, unit: 'lb' },
     steps: [],
     stepGoal: 10000,
+    exercises: defaultExercises(),
+    routines: [],
+    workouts: [],
+    activeWorkout: null,
   };
 }
 
@@ -246,6 +266,146 @@ export function useMomentum() {
     if (isFinite(v) && v > 0) setState((p) => ({ ...p, stepGoal: v }));
   };
 
+  // ---- Exercise library ----
+  const addExercise = (name, category) => {
+    const nm = (name || '').trim();
+    if (!nm) return null;
+    const ex = { id: uid(), name: nm, category: category || 'Other' };
+    setState((p) => ({ ...p, exercises: [...(p.exercises || []), ex] }));
+    return ex;
+  };
+  const deleteExercise = (id) =>
+    setState((p) => ({ ...p, exercises: (p.exercises || []).filter((e) => e.id !== id) }));
+
+  // ---- Routines (repeatable templates) ----
+  const saveRoutine = (routine) =>
+    setState((p) => {
+      const routines = p.routines || [];
+      if (routine.id && routines.some((r) => r.id === routine.id)) {
+        return { ...p, routines: routines.map((r) => (r.id === routine.id ? { ...r, ...routine } : r)) };
+      }
+      return { ...p, routines: [...routines, { id: uid(), ...routine }] };
+    });
+  const deleteRoutine = (id) =>
+    setState((p) => ({ ...p, routines: (p.routines || []).filter((r) => r.id !== id) }));
+
+  // ---- Active workout ----
+  // Prefill each exercise's sets from the most recent past session of that exercise.
+  const prefillEntry = (s, exId) => {
+    for (let i = (s.workouts || []).length - 1; i >= 0; i--) {
+      const e = (s.workouts[i].entries || []).find((x) => x.id === exId);
+      if (e && e.sets && e.sets.length) {
+        return e.sets.map((set) => ({ weight: set.weight, reps: set.reps, done: false }));
+      }
+    }
+    return [{ weight: '', reps: '', done: false }];
+  };
+
+  const startWorkout = (name, exerciseIds = [], routineId = null) =>
+    setState((p) => ({
+      ...p,
+      activeWorkout: {
+        name: name || 'Workout',
+        routineId,
+        entries: exerciseIds.map((id) => ({ id, sets: prefillEntry(p, id) })),
+      },
+    }));
+
+  const startRoutine = (routineId) =>
+    setState((p) => {
+      const r = (p.routines || []).find((x) => x.id === routineId);
+      if (!r) return p;
+      return {
+        ...p,
+        activeWorkout: {
+          name: r.name,
+          routineId,
+          entries: (r.exerciseIds || []).map((id) => ({ id, sets: prefillEntry(p, id) })),
+        },
+      };
+    });
+
+  const repeatWorkout = (workoutId) =>
+    setState((p) => {
+      const w = (p.workouts || []).find((x) => x.id === workoutId);
+      if (!w) return p;
+      return {
+        ...p,
+        activeWorkout: {
+          name: w.name,
+          routineId: w.routineId || null,
+          entries: (w.entries || []).map((e) => ({
+            id: e.id,
+            sets: (e.sets || []).map((s) => ({ weight: s.weight, reps: s.reps, done: false })),
+          })),
+        },
+      };
+    });
+
+  const updateActive = (fn) =>
+    setState((p) => (p.activeWorkout ? { ...p, activeWorkout: fn(p.activeWorkout) } : p));
+
+  const setActiveName = (name) => updateActive((a) => ({ ...a, name }));
+  const addActiveExercise = (exId) =>
+    updateActive((a) =>
+      a.entries.some((e) => e.id === exId)
+        ? a
+        : { ...a, entries: [...a.entries, { id: exId, sets: [{ weight: '', reps: '', done: false }] }] }
+    );
+  const removeActiveExercise = (idx) =>
+    updateActive((a) => ({ ...a, entries: a.entries.filter((_, i) => i !== idx) }));
+  const addSet = (exIdx) =>
+    updateActive((a) => ({
+      ...a,
+      entries: a.entries.map((e, i) => {
+        if (i !== exIdx) return e;
+        const last = e.sets[e.sets.length - 1];
+        return { ...e, sets: [...e.sets, { weight: last?.weight || '', reps: last?.reps || '', done: false }] };
+      }),
+    }));
+  const updateSet = (exIdx, setIdx, field, value) =>
+    updateActive((a) => ({
+      ...a,
+      entries: a.entries.map((e, i) =>
+        i !== exIdx ? e : { ...e, sets: e.sets.map((s, j) => (j === setIdx ? { ...s, [field]: value } : s)) }
+      ),
+    }));
+  const toggleSet = (exIdx, setIdx) =>
+    updateActive((a) => ({
+      ...a,
+      entries: a.entries.map((e, i) =>
+        i !== exIdx ? e : { ...e, sets: e.sets.map((s, j) => (j === setIdx ? { ...s, done: !s.done } : s)) }
+      ),
+    }));
+  const removeSet = (exIdx, setIdx) =>
+    updateActive((a) => ({
+      ...a,
+      entries: a.entries.map((e, i) => (i !== exIdx ? e : { ...e, sets: e.sets.filter((_, j) => j !== setIdx) })),
+    }));
+
+  const cancelWorkout = () => setState((p) => ({ ...p, activeWorkout: null }));
+
+  const finishWorkout = () =>
+    setState((p) => {
+      const a = p.activeWorkout;
+      if (!a) return p;
+      // Keep only sets with at least reps logged; drop empty exercises.
+      const entries = a.entries
+        .map((e) => ({
+          id: e.id,
+          sets: e.sets
+            .filter((s) => `${s.reps}`.trim() !== '' || `${s.weight}`.trim() !== '')
+            .map((s) => ({ weight: s.weight === '' ? 0 : Number(s.weight), reps: s.reps === '' ? 0 : Number(s.reps) })),
+        }))
+        .filter((e) => e.sets.length > 0);
+      if (!entries.length) return { ...p, activeWorkout: null };
+      const workout = { id: uid(), date: todayStr(), name: a.name, routineId: a.routineId || null, entries };
+      return { ...p, activeWorkout: null, workouts: [...(p.workouts || []), workout] };
+    });
+
+  const deleteWorkout = (id) =>
+    setState((p) => ({ ...p, workouts: (p.workouts || []).filter((w) => w.id !== id) }));
+
   const seedLeanPack = () =>
     setState((p) => {
       const existing = new Set(p.habits.map((h) => h.name));
@@ -282,6 +442,23 @@ export function useMomentum() {
     setGoal,
     logSteps,
     setStepGoal,
+    addExercise,
+    deleteExercise,
+    saveRoutine,
+    deleteRoutine,
+    startWorkout,
+    startRoutine,
+    repeatWorkout,
+    setActiveName,
+    addActiveExercise,
+    removeActiveExercise,
+    addSet,
+    updateSet,
+    toggleSet,
+    removeSet,
+    cancelWorkout,
+    finishWorkout,
+    deleteWorkout,
     seedLeanPack,
     enableNotifications,
   };

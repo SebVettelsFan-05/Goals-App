@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMomentum } from './store.js';
 import { useInstall } from './install.js';
-import { addDays, fmt, nowMinutes, streakOf, stepsStats, toMin, todayStr, weightStats, weeklyHabitStats } from './utils.js';
+import TrainView from './Train.jsx';
+import { addDays, fmt, gymStats, nowMinutes, streakOf, stepsStats, toMin, todayStr, weightStats, weeklyHabitStats } from './utils.js';
 
 const fmtN = (n) => (n == null ? '—' : Math.round(n).toLocaleString());
 
@@ -13,8 +14,13 @@ const greeting = (h) => (h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18
 export default function App() {
   const store = useMomentum();
   const [tab, setTab] = useState('home');
+  const [bodySub, setBodySub] = useState('weight'); // 'weight' | 'steps'
   const [input, setInput] = useState('');
   const [editing, setEditing] = useState(null); // habit object, {} for new, or null
+  const openBody = (sub) => {
+    setBodySub(sub);
+    setTab('body');
+  };
   const [notifyState, setNotifyState] = useState(
     'Notification' in window ? Notification.permission : 'unsupported'
   );
@@ -67,9 +73,11 @@ export default function App() {
 
             <FocusCard current={current} next={next} count={todaysEvents.length} store={store} />
 
-            <WeightCard store={store} onOpen={() => setTab('weight')} />
+            <Insights store={store} />
 
-            <StepsCard store={store} onOpen={() => setTab('steps')} />
+            <WeightCard store={store} onOpen={() => openBody('weight')} />
+
+            <StepsCard store={store} onOpen={() => openBody('steps')} />
 
             <HomeHabits store={store} onManage={() => setTab('habits')} />
 
@@ -155,9 +163,9 @@ export default function App() {
           </section>
         )}
 
-        {tab === 'weight' && <WeightView store={store} />}
+        {tab === 'train' && <TrainView store={store} />}
 
-        {tab === 'steps' && <StepsView store={store} />}
+        {tab === 'body' && <BodyView store={store} sub={bodySub} setSub={setBodySub} />}
       </main>
 
       {showQuickAdd && (
@@ -179,8 +187,8 @@ export default function App() {
           ['home', 'Home'],
           ['today', 'Today'],
           ['habits', 'Habits'],
-          ['weight', 'Weight'],
-          ['steps', 'Steps'],
+          ['train', 'Train'],
+          ['body', 'Body'],
         ].map(([key, label]) => (
           <button
             key={key}
@@ -417,6 +425,71 @@ function HomeHabits({ store, onManage }) {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ---------------- Body tab (weight + steps) ---------------- */
+
+function BodyView({ store, sub, setSub }) {
+  return (
+    <section className="view">
+      <div className="segmented">
+        <button className={sub === 'weight' ? 'active' : ''} onClick={() => setSub('weight')}>
+          Weight
+        </button>
+        <button className={sub === 'steps' ? 'active' : ''} onClick={() => setSub('steps')}>
+          Steps
+        </button>
+      </div>
+      {sub === 'weight' ? <WeightView store={store} /> : <StepsView store={store} />}
+    </section>
+  );
+}
+
+function Insights({ store }) {
+  const { state } = store;
+  const unit = state.goal?.unit || 'lb';
+  const target = state.goal?.target ?? null;
+
+  const w = useMemo(() => weightStats(state.weights, target), [state.weights, target]);
+  const st = useMemo(() => stepsStats(state.steps, state.stepGoal || 10000), [state.steps, state.stepGoal]);
+  const hab = useMemo(() => weeklyHabitStats(state.habits), [state.habits]);
+  const gym = useMemo(() => gymStats(state.workouts, state.exercises), [state.workouts, state.exercises]);
+
+  const dows = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const lines = [];
+
+  if (gym.count7) {
+    lines.push(
+      `Trained ${gym.count7}× in the last 7 days${gym.topCategory ? ` · most volume on ${gym.topCategory}` : ''}.`
+    );
+  } else {
+    lines.push('No workouts logged in the last 7 days — time to train.');
+  }
+  if (w && Math.abs(w.ratePerWeek) >= 0.05) {
+    lines.push(`Weight ${w.ratePerWeek < 0 ? 'down' : 'up'} ${Math.abs(w.ratePerWeek).toFixed(1)} ${unit}/wk.`);
+  }
+  if (st) {
+    lines.push(`Averaging ${st.weekAvg.toLocaleString()} steps/day (${st.daysHitWeek}/7 days at goal).`);
+  }
+  if (hab.rate != null) {
+    lines.push(`Habits ${Math.round(hab.rate * 100)}% this week${hab.bestStreak ? ` · best streak ${hab.bestStreak}d` : ''}.`);
+  }
+  if (gym.topDay != null && gym.count30 >= 3) {
+    lines.push(`You train most on ${dows[gym.topDay]}s.`);
+  }
+
+  if (lines.length === 0) return null;
+
+  return (
+    <div className="card">
+      <div className="card-label">The whole picture</div>
+      <ul className="insights">
+        {lines.map((l, i) => (
+          <li key={i}>{l}</li>
+        ))}
+      </ul>
     </div>
   );
 }

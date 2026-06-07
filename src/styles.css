@@ -235,6 +235,74 @@ html, body {
 .sdot { width: 9px; height: 9px; border-radius: 50%; background: var(--surface-2); }
 .sdot.on { background: var(--good); }
 
+/* ---------- INSIGHTS ---------- */
+.insights { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.insights li { position: relative; padding-left: 18px; font-size: 14px; line-height: 1.45; color: var(--text); }
+.insights li::before { content: ''; position: absolute; left: 2px; top: 7px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+/* ---------- SEGMENTED CONTROL ---------- */
+.segmented { display: flex; gap: 4px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 14px; padding: 4px; margin: 8px 0 18px; }
+.segmented button { flex: 1; background: none; border: none; color: var(--muted); font-size: 15px; font-weight: 650; padding: 10px; border-radius: 10px; cursor: pointer; transition: 0.15s; }
+.segmented button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+
+/* ---------- TRAIN ---------- */
+.btn-primary.wide { width: 100%; margin-bottom: 8px; }
+.card-label.section { margin: 24px 4px 12px; }
+
+.routine-list { display: flex; flex-direction: column; gap: 10px; }
+.routine-card { display: flex; background: var(--surface); border: 1px solid var(--line); border-radius: 15px; overflow: hidden; box-shadow: var(--shadow); }
+.routine-main { flex: 1; text-align: left; background: none; border: none; color: var(--text); padding: 16px; cursor: pointer; }
+.routine-name { font-size: 17px; font-weight: 650; }
+.routine-meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.routine-edit { background: none; border: none; border-left: 1px solid var(--line); color: var(--accent); font-weight: 600; padding: 0 18px; cursor: pointer; }
+
+.history-list { display: flex; flex-direction: column; gap: 10px; }
+.hist-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; cursor: pointer; color: var(--text); }
+.hist-name { font-size: 16px; font-weight: 600; }
+.hist-meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.repeat-btn { color: var(--accent); font-weight: 650; font-size: 14px; padding: 6px 10px; flex: none; }
+
+/* Active workout */
+.aw-header { display: flex; align-items: center; gap: 10px; margin: 8px 0 18px; }
+.aw-name { flex: 1; background: var(--surface-2); border: 1px solid var(--line); color: var(--text); border-radius: 12px; padding: 12px 14px; font-size: 18px; font-weight: 700; outline: none; min-width: 0; }
+.aw-name:focus { border-color: var(--accent); }
+.aw-header .ghost { background: none; border: none; color: var(--muted); font-weight: 600; cursor: pointer; padding: 8px; }
+
+.ex-block { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin-bottom: 12px; box-shadow: var(--shadow); }
+.ex-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
+.ex-name { font-size: 17px; font-weight: 650; }
+.ex-cat { color: var(--muted); font-size: 13px; margin-top: 1px; }
+.set-grid { display: grid; grid-template-columns: 32px 1fr 1fr 36px 28px; gap: 8px; align-items: center; }
+.set-head { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; padding: 0 2px; }
+.set-row { margin-bottom: 8px; }
+.set-row.done input { border-color: var(--good); }
+.set-n { color: var(--muted); font-weight: 700; text-align: center; }
+.set-row input { background: var(--surface-2); border: 1px solid var(--line); color: var(--text); border-radius: 10px; padding: 11px; font-size: 16px; outline: none; width: 100%; text-align: center; }
+.set-row input:focus { border-color: var(--accent); }
+.set-row .check { margin: 0 auto; }
+.set-x { background: none; border: none; color: var(--muted); font-size: 13px; cursor: pointer; }
+.add-set { width: 100%; margin-top: 4px; background: var(--surface-2); border: none; color: var(--accent); border-radius: 10px; padding: 11px; font-weight: 600; cursor: pointer; }
+
+/* Exercise picker / routine editor */
+.modal-card.tall { max-height: 86vh; display: flex; flex-direction: column; }
+.search { background: var(--surface-2); border: 1px solid var(--line); color: var(--text); border-radius: 12px; padding: 13px 16px; font-size: 16px; outline: none; margin-bottom: 12px; }
+.search:focus { border-color: var(--accent); }
+.picker-list { overflow-y: auto; flex: 1; min-height: 120px; margin-bottom: 12px; }
+.picker-cat { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin: 14px 0 6px; }
+.picker-item { display: block; width: 100%; text-align: left; background: none; border: none; border-bottom: 1px solid var(--line); color: var(--text); padding: 13px 4px; font-size: 16px; cursor: pointer; }
+.new-ex { display: flex; gap: 8px; margin-bottom: 12px; }
+.new-ex input { flex: 1; min-width: 0; background: var(--surface-2); border: 1px solid var(--line); color: var(--text); border-radius: 11px; padding: 12px; font-size: 15px; outline: none; }
+.new-ex select { background: var(--surface-2); border: 1px solid var(--line); color: var(--text); border-radius: 11px; padding: 12px; font-size: 15px; }
+
+.routine-ex-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.routine-ex { display: flex; align-items: center; justify-content: space-between; background: var(--surface-2); border-radius: 11px; padding: 12px 14px; font-size: 15px; }
+
+.detail-sub { color: var(--muted); font-size: 14px; margin-bottom: 14px; }
+.detail-list { display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+.detail-ex .ex-name { margin-bottom: 6px; }
+.detail-sets { display: flex; flex-wrap: wrap; gap: 6px; }
+.set-chip { background: var(--surface-2); border-radius: 8px; padding: 5px 10px; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--text); }
+
 /* ---------- STEPS BAR CHART ---------- */
 .steps-chart { width: 100%; height: auto; display: block; margin: 8px 0 14px; overflow: visible; }
 .steps-chart .bar { fill: var(--accent); opacity: 0.3; transition: opacity 0.3s; }

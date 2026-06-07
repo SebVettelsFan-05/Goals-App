@@ -169,3 +169,95 @@ export function weeklyHabitStats(habits, today = todayStr()) {
   });
   return { done, total, rate: total ? done / total : null, bestStreak, days: days.length };
 }
+
+/* ---------------- Workouts ---------------- */
+
+export const slug = (s) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+// Total tonnage of a session = sum(weight * reps) across all sets.
+export function workoutVolume(workout) {
+  let v = 0;
+  (workout.entries || []).forEach((e) =>
+    (e.sets || []).forEach((s) => {
+      const w = parseFloat(s.weight) || 0;
+      const r = parseInt(s.reps, 10) || 0;
+      v += w * r;
+    })
+  );
+  return Math.round(v);
+}
+
+export function workoutSetCount(workout) {
+  return (workout.entries || []).reduce((n, e) => n + (e.sets || []).length, 0);
+}
+
+// Aggregate gym behaviour for insights.
+export function gymStats(workouts, exercises, today = todayStr()) {
+  const catOf = {};
+  (exercises || []).forEach((e) => { catOf[e.id] = e.category; });
+  const within = (date, n) => daysBetween(date, today) >= 0 && daysBetween(date, today) < n;
+
+  const last7 = (workouts || []).filter((w) => within(w.date, 7));
+  const last30 = (workouts || []).filter((w) => within(w.date, 30));
+
+  const catSets = {};
+  const dow = [0, 0, 0, 0, 0, 0, 0];
+  last30.forEach((w) => {
+    const d = new Date(w.date + 'T00:00').getDay();
+    dow[d] += 1;
+    (w.entries || []).forEach((e) => {
+      const c = catOf[e.id] || 'Other';
+      catSets[c] = (catSets[c] || 0) + (e.sets || []).length;
+    });
+  });
+
+  let topCategory = null;
+  let topSets = 0;
+  Object.entries(catSets).forEach(([c, n]) => { if (n > topSets) { topSets = n; topCategory = c; } });
+
+  let topDay = null;
+  let topDayN = 0;
+  dow.forEach((n, i) => { if (n > topDayN) { topDayN = n; topDay = i; } });
+
+  const volume7 = last7.reduce((sum, w) => sum + workoutVolume(w), 0);
+
+  return {
+    count7: last7.length,
+    count30: last30.length,
+    volume7,
+    topCategory,
+    topSets,
+    topDay,
+    lastDate: (workouts || []).map((w) => w.date).sort().pop() || null,
+  };
+}
+
+// Flatten all workouts to CSV (one row per set). No paywall.
+export function workoutsToCSV(workouts, exercises) {
+  const nameOf = {};
+  const catOf = {};
+  (exercises || []).forEach((e) => { nameOf[e.id] = e.name; catOf[e.id] = e.category; });
+  const esc = (v) => {
+    const s = String(v ?? '');
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const rows = [['Date', 'Workout', 'Exercise', 'Category', 'Set', 'Weight', 'Reps']];
+  [...(workouts || [])]
+    .sort((a, b) => (a.date < b.date ? -1 : 1))
+    .forEach((w) => {
+      (w.entries || []).forEach((e) => {
+        (e.sets || []).forEach((s, i) => {
+          rows.push([
+            w.date,
+            w.name || 'Workout',
+            nameOf[e.id] || e.name || e.id,
+            catOf[e.id] || '',
+            i + 1,
+            s.weight ?? '',
+            s.reps ?? '',
+          ]);
+        });
+      });
+    });
+  return rows.map((r) => r.map(esc).join(',')).join('\n');
+}
