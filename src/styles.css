@@ -242,7 +242,7 @@ html, body {
 .insights li { position: relative; padding-left: 18px; font-size: 14px; line-height: 1.45; color: var(--text); }
 .insights li::before { content: ''; position: absolute; left: 2px; top: 7px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 
-.insights-card { display: block; width: 100%; text-align: left; cursor: pointer; }
+.insights-card { display: block; width: 100%; text-align: left; cursor: pointer; color: var(--text); font: inherit; }
 .insight-lead { color: var(--muted); font-size: 14px; line-height: 1.45; margin-top: 14px; }
 
 .metric-tiles { display: flex; gap: 8px; }
