@@ -174,6 +174,19 @@ export function weeklyHabitStats(habits, today = todayStr()) {
 
 export const slug = (s) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
+// A muted-but-distinct color per muscle group, used in charts and the picker.
+export const CATEGORY_COLORS = {
+  Chest: '#ff6b81',
+  Back: '#4dabf7',
+  Legs: '#9775fa',
+  Shoulders: '#ffa94d',
+  Arms: '#38d9a9',
+  Core: '#ffd43b',
+  Cardio: '#ff8787',
+  Other: '#868e96',
+};
+export const colorForCategory = (c) => CATEGORY_COLORS[c] || CATEGORY_COLORS.Other;
+
 // Total tonnage of a session = sum(weight * reps) across all sets.
 export function workoutVolume(workout) {
   let v = 0;

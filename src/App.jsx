@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMomentum } from './store.js';
 import { useInstall } from './install.js';
 import TrainView from './Train.jsx';
-import { addDays, fmt, gymStats, nowMinutes, streakOf, stepsStats, toMin, todayStr, weightStats, weeklyHabitStats } from './utils.js';
+import { addDays, colorForCategory, fmt, gymStats, nowMinutes, streakOf, stepsStats, toMin, todayStr, weightStats, weeklyHabitStats } from './utils.js';
 
 const fmtN = (n) => (n == null ? '—' : Math.round(n).toLocaleString());
 
@@ -502,7 +502,7 @@ function MetricTiles({ tiles }) {
   return (
     <div className="metric-tiles">
       {tiles.map((t) => (
-        <div className="metric-tile" key={t.key}>
+        <div className={`metric-tile m-${t.key}`} key={t.key}>
           <div className={'metric-value' + (t.good ? ' good' : '')}>{t.value}</div>
           <div className="metric-label">{t.label}</div>
         </div>
@@ -550,9 +550,15 @@ function InsightsView({ store, onClose }) {
           <div className="cat-bars">
             {cats.map(([cat, n]) => (
               <div className="cat-row" key={cat}>
-                <span className="cat-name">{cat}</span>
+                <span className="cat-name">
+                  <span className="cat-dot" style={{ background: colorForCategory(cat) }} />
+                  {cat}
+                </span>
                 <div className="cat-track">
-                  <div className="cat-fill" style={{ width: `${(n / maxSets) * 100}%` }} />
+                  <div
+                    className="cat-fill"
+                    style={{ width: `${(n / maxSets) * 100}%`, background: colorForCategory(cat) }}
+                  />
                 </div>
                 <span className="cat-n">{n}</span>
               </div>

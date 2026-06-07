@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { EXERCISE_CATEGORIES } from './store.js';
-import { workoutSetCount, workoutVolume, workoutsToCSV } from './utils.js';
+import { colorForCategory, workoutSetCount, workoutVolume, workoutsToCSV } from './utils.js';
 
 const formatDate = (ds) =>
   new Date(ds + 'T00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
@@ -217,7 +217,10 @@ function ExercisePicker({ store, onClose, onAdd }) {
             .sort()
             .map((c) => (
               <div key={c}>
-                <div className="picker-cat">{c}</div>
+                <div className="picker-cat">
+                  <span className="cat-dot" style={{ background: colorForCategory(c) }} />
+                  {c}
+                </div>
                 {byCat[c].map((e) => (
                   <button
                     key={e.id}
