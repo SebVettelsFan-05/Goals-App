@@ -235,6 +235,13 @@ html, body {
 .sdot { width: 9px; height: 9px; border-radius: 50%; background: var(--surface-2); }
 .sdot.on { background: var(--good); }
 
+/* ---------- STEPS BAR CHART ---------- */
+.steps-chart { width: 100%; height: auto; display: block; margin: 8px 0 14px; overflow: visible; }
+.steps-chart .bar { fill: var(--accent); opacity: 0.3; transition: opacity 0.3s; }
+.steps-chart .bar.hit { opacity: 1; }
+.steps-chart .goal-line { stroke: var(--good); stroke-width: 1.4; stroke-dasharray: 5 5; opacity: 0.8; }
+.steps-chart .goal-tag { fill: var(--good); font-size: 10px; font-weight: 700; }
+
 /* ---------- QUICK ADD ---------- */
 .quick-add {
   position: fixed; left: 0; right: 0; bottom: calc(64px + var(--safe-bottom));
@@ -257,7 +264,7 @@ html, body {
   backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
   border-top: 1px solid var(--line); display: flex; gap: 4px; padding: 8px 10px calc(8px + var(--safe-bottom));
 }
-.tab { flex: 1; background: none; border: none; color: var(--muted); font-size: 14px; font-weight: 650; cursor: pointer; padding: 10px 0; border-radius: 12px; transition: 0.15s; }
+.tab { flex: 1; background: none; border: none; color: var(--muted); font-size: 13px; font-weight: 650; cursor: pointer; padding: 10px 2px; border-radius: 12px; transition: 0.15s; }
 .tab.active { color: var(--accent); background: var(--accent-soft); }
 
 /* ---------- MODAL ---------- */

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMomentum } from './store.js';
 import { useInstall } from './install.js';
-import { addDays, fmt, nowMinutes, streakOf, toMin, todayStr, weightStats, weeklyHabitStats } from './utils.js';
+import { addDays, fmt, nowMinutes, streakOf, stepsStats, toMin, todayStr, weightStats, weeklyHabitStats } from './utils.js';
+
+const fmtN = (n) => (n == null ? '—' : Math.round(n).toLocaleString());
 
 const lastDays = (n) => Array.from({ length: n }, (_, i) => addDays(todayStr(), -(n - 1 - i)));
 const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -66,6 +68,8 @@ export default function App() {
             <FocusCard current={current} next={next} count={todaysEvents.length} store={store} />
 
             <WeightCard store={store} onOpen={() => setTab('weight')} />
+
+            <StepsCard store={store} onOpen={() => setTab('steps')} />
 
             <HomeHabits store={store} onManage={() => setTab('habits')} />
 
@@ -152,6 +156,8 @@ export default function App() {
         )}
 
         {tab === 'weight' && <WeightView store={store} />}
+
+        {tab === 'steps' && <StepsView store={store} />}
       </main>
 
       {showQuickAdd && (
@@ -174,6 +180,7 @@ export default function App() {
           ['today', 'Today'],
           ['habits', 'Habits'],
           ['weight', 'Weight'],
+          ['steps', 'Steps'],
         ].map(([key, label]) => (
           <button
             key={key}
@@ -675,6 +682,199 @@ function DotStrip({ habit, days = 7 }) {
         <span key={d} className={'sdot' + (habit.history && habit.history[d] ? ' on' : '')} />
       ))}
     </div>
+  );
+}
+
+const kfmt = (n) => (n % 1000 === 0 ? `${n / 1000}k` : `${(n / 1000).toFixed(1)}k`);
+
+function StepsChart({ data, goal, height = 160 }) {
+  const W = 340;
+  const H = height;
+  const pad = { l: 6, r: 6, t: 16, b: 14 };
+  const vals = data.map((d) => d.value);
+  const top = Math.max(goal, ...vals, 1) * 1.15;
+  const innerW = W - pad.l - pad.r;
+  const chartH = H - pad.t - pad.b;
+  const baseY = H - pad.b;
+  const slot = innerW / data.length;
+  const bw = Math.min(slot * 0.6, 16);
+  const goalY = baseY - (goal / top) * chartH;
+
+  return (
+    <svg className="steps-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Daily steps">
+      <line x1={pad.l} y1={goalY} x2={W - pad.r} y2={goalY} className="goal-line" />
+      <text x={pad.l} y={goalY - 4} className="goal-tag" textAnchor="start">
+        goal {kfmt(goal)}
+      </text>
+      {data.map((d, i) => {
+        const h = (d.value / top) * chartH;
+        const x = pad.l + slot * i + (slot - bw) / 2;
+        return (
+          <rect
+            key={d.date}
+            x={x}
+            y={baseY - h}
+            width={bw}
+            height={Math.max(h, 0)}
+            rx="3"
+            className={'bar' + (d.value >= goal ? ' hit' : '')}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+function StepsCard({ store, onOpen }) {
+  const { state } = store;
+  const goal = state.stepGoal || 10000;
+  const [entry, setEntry] = useState('');
+  const stats = useMemo(() => stepsStats(state.steps, goal), [state.steps, goal]);
+  const todayVal = (state.steps || []).find((s) => s.date === todayStr())?.value;
+  const hitToday = todayVal != null && todayVal >= goal;
+
+  const submit = (e) => {
+    e.preventDefault();
+    if (entry.trim()) {
+      store.logSteps(entry);
+      setEntry('');
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <div className="card-label">Steps</div>
+        <button className="link-btn" onClick={onOpen}>
+          Details
+        </button>
+      </div>
+
+      <div className="weight-hero">
+        <div className="weight-now">
+          {fmtN(stats?.todayVal ?? null)}
+          <span className="unit">today</span>
+        </div>
+        {stats && <div className={'rate-pill' + (hitToday ? ' good' : '')}>{stats.daysHitWeek}/7 days hit</div>}
+      </div>
+
+      {stats ? (
+        <StepsChart data={stats.last14} goal={goal} />
+      ) : (
+        <div className="chart-hint">Log your steps to see your daily bars.</div>
+      )}
+
+      <form className="weight-entry" onSubmit={submit}>
+        <input
+          type="number"
+          inputMode="numeric"
+          step="100"
+          placeholder={todayVal != null ? `Logged ${todayVal.toLocaleString()} — update?` : 'Log today’s steps'}
+          value={entry}
+          onChange={(e) => setEntry(e.target.value)}
+        />
+        <button type="submit" className="btn-primary">
+          {todayVal != null ? 'Update' : 'Log'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function StepsView({ store }) {
+  const { state } = store;
+  const goal = state.stepGoal || 10000;
+  const [entry, setEntry] = useState('');
+  const [goalInput, setGoalInput] = useState(String(goal));
+  const stats = useMemo(() => stepsStats(state.steps, goal), [state.steps, goal]);
+  const todayVal = (state.steps || []).find((s) => s.date === todayStr())?.value;
+  const hitToday = todayVal != null && todayVal >= goal;
+
+  const submit = (e) => {
+    e.preventDefault();
+    if (entry.trim()) {
+      store.logSteps(entry);
+      setEntry('');
+    }
+  };
+
+  let verdict = null;
+  if (stats) {
+    if (stats.daysHitWeek >= 5) verdict = 'Great movement — consistency is paying off.';
+    else if (stats.daysHitWeek >= 2) verdict = 'Solid. Nudge a couple more days over the line.';
+    else verdict = 'Get a daily walk in — even 10 minutes adds up.';
+  }
+
+  return (
+    <section className="view">
+      <header className="view-header">
+        <h1>Steps</h1>
+      </header>
+
+      <div className="stat-grid">
+        <div className="stat">
+          <div className={'stat-num' + (hitToday ? ' good' : '')}>{fmtN(stats?.todayVal ?? null)}</div>
+          <div className="stat-label">Today</div>
+        </div>
+        <div className="stat">
+          <div className="stat-num">{fmtN(stats?.weekAvg ?? null)}</div>
+          <div className="stat-label">7-day avg</div>
+        </div>
+        <div className="stat">
+          <div className="stat-num">{fmtN(goal)}</div>
+          <div className="stat-label">Goal</div>
+        </div>
+      </div>
+
+      {stats ? (
+        <StepsChart data={stats.last14} goal={goal} height={190} />
+      ) : (
+        <div className="chart-hint">Log a few days to see your daily bars.</div>
+      )}
+
+      {stats && (
+        <div className="projection">
+          Hit your goal <b>{stats.daysHitWeek}/7</b> days this week
+          {stats.streak > 0 ? (
+            <>
+              {' '}· <b>{stats.streak}-day</b> streak
+            </>
+          ) : null}
+          . {verdict}
+        </div>
+      )}
+
+      <form className="weight-entry" onSubmit={submit}>
+        <input
+          type="number"
+          inputMode="numeric"
+          step="100"
+          placeholder={todayVal != null ? `Logged ${todayVal.toLocaleString()} — update?` : 'Today’s steps'}
+          value={entry}
+          onChange={(e) => setEntry(e.target.value)}
+        />
+        <button type="submit" className="btn-primary">
+          {todayVal != null ? 'Update' : 'Log'}
+        </button>
+      </form>
+
+      <div className="goal-row">
+        <label>Daily step goal</label>
+        <div>
+          <input
+            type="number"
+            inputMode="numeric"
+            step="500"
+            placeholder="e.g. 10000"
+            value={goalInput}
+            onChange={(e) => setGoalInput(e.target.value)}
+          />
+          <button className="btn-soft inline" onClick={() => store.setStepGoal(goalInput)}>
+            Set
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 

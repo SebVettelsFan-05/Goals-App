@@ -125,6 +125,35 @@ export function weightStats(weights, target) {
   return { sorted, pts, smoothed, current, ratePerWeek, weeksToGo, etaDate, pctPerWeek };
 }
 
+// Daily step counts -> the numbers and series a Steps view needs.
+export function stepsStats(steps, goal = 10000) {
+  const list = steps || [];
+  if (!list.length) return null;
+  const map = {};
+  list.forEach((s) => { map[s.date] = s.value; });
+  const today = todayStr();
+  const span = (n) => Array.from({ length: n }, (_, i) => addDays(today, -(n - 1 - i)));
+
+  const last14 = span(14).map((d) => ({ date: d, value: map[d] || 0 }));
+  const last7 = span(7).map((d) => ({ date: d, value: map[d] || 0 }));
+  const logged7 = last7.filter((d) => map[d.date] != null);
+  const weekAvg = logged7.length
+    ? Math.round(logged7.reduce((a, b) => a + b.value, 0) / logged7.length)
+    : 0;
+  const daysHitWeek = last7.filter((d) => d.value >= goal).length;
+  const todayVal = map[today] ?? null;
+
+  // Consecutive days ending today that hit the goal.
+  let streak = 0;
+  let cur = today;
+  while ((map[cur] || 0) >= goal) {
+    streak++;
+    cur = addDays(cur, -1);
+  }
+
+  return { last14, last7, weekAvg, daysHitWeek, todayVal, streak, goal };
+}
+
 // Habit consistency over the last 7 days (including today).
 export function weeklyHabitStats(habits, today = todayStr()) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(today, -i));

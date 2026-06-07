@@ -13,7 +13,15 @@ function load() {
   }
 }
 function fresh() {
-  return { events: [], habits: [], notified: {}, weights: [], goal: { target: null, unit: 'lb' } };
+  return {
+    events: [],
+    habits: [],
+    notified: {},
+    weights: [],
+    goal: { target: null, unit: 'lb' },
+    steps: [],
+    stepGoal: 10000,
+  };
 }
 
 // Behaviors proven to matter for a lean cut — seeded in one tap.
@@ -223,6 +231,21 @@ export function useMomentum() {
 
   const setGoal = (goal) => setState((p) => ({ ...p, goal: { ...p.goal, ...goal } }));
 
+  // Upsert today's step count (one entry per day; latest wins).
+  const logSteps = (value) =>
+    setState((p) => {
+      const v = Math.round(parseFloat(value));
+      if (!isFinite(v) || v < 0) return p;
+      const d = todayStr();
+      const others = (p.steps || []).filter((s) => s.date !== d);
+      return { ...p, steps: [...others, { date: d, value: v }] };
+    });
+
+  const setStepGoal = (value) => {
+    const v = Math.round(parseFloat(value));
+    if (isFinite(v) && v > 0) setState((p) => ({ ...p, stepGoal: v }));
+  };
+
   const seedLeanPack = () =>
     setState((p) => {
       const existing = new Set(p.habits.map((h) => h.name));
@@ -257,6 +280,8 @@ export function useMomentum() {
     logWeight,
     deleteWeight,
     setGoal,
+    logSteps,
+    setStepGoal,
     seedLeanPack,
     enableNotifications,
   };
