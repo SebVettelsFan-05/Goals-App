@@ -17,6 +17,8 @@ export default function App() {
   const [bodySub, setBodySub] = useState('weight'); // 'weight' | 'steps'
   const [input, setInput] = useState('');
   const [editing, setEditing] = useState(null); // habit object, {} for new, or null
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [insightsOpen, setInsightsOpen] = useState(false);
   const openBody = (sub) => {
     setBodySub(sub);
     setTab('body');
@@ -65,15 +67,20 @@ export default function App() {
         {tab === 'home' && (
           <section className="view">
             <header className="hero">
-              <div className="hero-greet">{greeting(now.getHours())}</div>
-              <div className="hero-date">{dateLabel}</div>
+              <div>
+                <div className="hero-greet">{greeting(now.getHours())}</div>
+                <div className="hero-date">{dateLabel}</div>
+              </div>
+              <button className="icon-btn" onClick={() => setSearchOpen(true)} aria-label="Search">
+                <SearchIcon />
+              </button>
             </header>
 
             <InstallCard />
 
             <FocusCard current={current} next={next} count={todaysEvents.length} store={store} />
 
-            <Insights store={store} />
+            <Insights store={store} onOpen={() => setInsightsOpen(true)} />
 
             <WeightCard store={store} onOpen={() => openBody('weight')} />
 
@@ -214,6 +221,19 @@ export default function App() {
           }}
         />
       )}
+
+      {searchOpen && (
+        <SearchOverlay
+          store={store}
+          onClose={() => setSearchOpen(false)}
+          go={(t) => {
+            setTab(t);
+            setSearchOpen(false);
+          }}
+        />
+      )}
+
+      {insightsOpen && <InsightsView store={store} onClose={() => setInsightsOpen(false)} />}
 
       {notifyState === 'default' && (
         <div className="notify-banner">
@@ -447,49 +467,217 @@ function BodyView({ store, sub, setSub }) {
   );
 }
 
-function Insights({ store }) {
+const DOWS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// Shared computation for both the Home summary and the full Insights view.
+function useInsights(store) {
   const { state } = store;
   const unit = state.goal?.unit || 'lb';
   const target = state.goal?.target ?? null;
-
   const w = useMemo(() => weightStats(state.weights, target), [state.weights, target]);
   const st = useMemo(() => stepsStats(state.steps, state.stepGoal || 10000), [state.steps, state.stepGoal]);
   const hab = useMemo(() => weeklyHabitStats(state.habits), [state.habits]);
   const gym = useMemo(() => gymStats(state.workouts, state.exercises), [state.workouts, state.exercises]);
 
-  const dows = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const losing = w && w.ratePerWeek < -0.01;
+  const tiles = [
+    { key: 'train', value: gym.count7, label: 'workouts/wk' },
+    { key: 'weight', value: w ? `${w.ratePerWeek > 0 ? '+' : ''}${w.ratePerWeek.toFixed(1)}` : '—', label: `${unit}/wk`, good: losing },
+    { key: 'steps', value: st ? `${(st.weekAvg / 1000).toFixed(1)}k` : '—', label: 'steps/day' },
+    { key: 'habits', value: hab.rate == null ? '—' : `${Math.round(hab.rate * 100)}%`, label: 'habits' },
+  ];
+
   const lines = [];
+  if (gym.count7) lines.push(`Trained ${gym.count7}× in the last 7 days${gym.topCategory ? ` · most volume on ${gym.topCategory}` : ''}.`);
+  else lines.push('No workouts logged in the last 7 days — time to train.');
+  if (w && Math.abs(w.ratePerWeek) >= 0.05) lines.push(`Weight ${w.ratePerWeek < 0 ? 'down' : 'up'} ${Math.abs(w.ratePerWeek).toFixed(1)} ${unit}/wk.`);
+  if (st) lines.push(`Averaging ${st.weekAvg.toLocaleString()} steps/day (${st.daysHitWeek}/7 days at goal).`);
+  if (hab.rate != null) lines.push(`Habits ${Math.round(hab.rate * 100)}% this week${hab.bestStreak ? ` · best streak ${hab.bestStreak}d` : ''}.`);
+  if (gym.topDay != null && gym.count30 >= 3) lines.push(`You train most on ${DOWS[gym.topDay]}s.`);
 
-  if (gym.count7) {
-    lines.push(
-      `Trained ${gym.count7}× in the last 7 days${gym.topCategory ? ` · most volume on ${gym.topCategory}` : ''}.`
-    );
-  } else {
-    lines.push('No workouts logged in the last 7 days — time to train.');
-  }
-  if (w && Math.abs(w.ratePerWeek) >= 0.05) {
-    lines.push(`Weight ${w.ratePerWeek < 0 ? 'down' : 'up'} ${Math.abs(w.ratePerWeek).toFixed(1)} ${unit}/wk.`);
-  }
-  if (st) {
-    lines.push(`Averaging ${st.weekAvg.toLocaleString()} steps/day (${st.daysHitWeek}/7 days at goal).`);
-  }
-  if (hab.rate != null) {
-    lines.push(`Habits ${Math.round(hab.rate * 100)}% this week${hab.bestStreak ? ` · best streak ${hab.bestStreak}d` : ''}.`);
-  }
-  if (gym.topDay != null && gym.count30 >= 3) {
-    lines.push(`You train most on ${dows[gym.topDay]}s.`);
-  }
+  return { tiles, lines, gym };
+}
 
-  if (lines.length === 0) return null;
+function MetricTiles({ tiles }) {
+  return (
+    <div className="metric-tiles">
+      {tiles.map((t) => (
+        <div className="metric-tile" key={t.key}>
+          <div className={'metric-value' + (t.good ? ' good' : '')}>{t.value}</div>
+          <div className="metric-label">{t.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Insights({ store, onOpen }) {
+  const { tiles, lines } = useInsights(store);
+  return (
+    <button className="card insights-card" onClick={onOpen}>
+      <div className="card-head">
+        <div className="card-label">The whole picture</div>
+        <span className="link-btn">Details ›</span>
+      </div>
+      <MetricTiles tiles={tiles} />
+      {lines[0] && <div className="insight-lead">{lines[0]}</div>}
+    </button>
+  );
+}
+
+function InsightsView({ store, onClose }) {
+  const { tiles, lines, gym } = useInsights(store);
+  const cats = Object.entries(gym.catSets || {}).sort((a, b) => b[1] - a[1]);
+  const maxSets = cats.length ? cats[0][1] : 0;
+  const maxDay = Math.max(1, ...gym.byDay);
 
   return (
-    <div className="card">
-      <div className="card-label">The whole picture</div>
-      <ul className="insights">
-        {lines.map((l, i) => (
-          <li key={i}>{l}</li>
-        ))}
-      </ul>
+    <div className="modal" onClick={onClose}>
+      <div className="modal-card tall" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-head">
+          <h2>Insights</h2>
+          <button className="ghost" onClick={onClose}>
+            Close
+          </button>
+        </div>
+
+        <MetricTiles tiles={tiles} />
+
+        <div className="card-label section">Training by muscle · 30 days</div>
+        {cats.length === 0 ? (
+          <div className="chart-hint">No workouts logged yet.</div>
+        ) : (
+          <div className="cat-bars">
+            {cats.map(([cat, n]) => (
+              <div className="cat-row" key={cat}>
+                <span className="cat-name">{cat}</span>
+                <div className="cat-track">
+                  <div className="cat-fill" style={{ width: `${(n / maxSets) * 100}%` }} />
+                </div>
+                <span className="cat-n">{n}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="card-label section">Workouts by day · 30 days</div>
+        <div className="dow-row">
+          {gym.byDay.map((n, i) => (
+            <div className="dow-col" key={i}>
+              <div className="dow-bar-wrap">
+                <div className="dow-bar" style={{ height: `${(n / maxDay) * 100}%` }} />
+              </div>
+              <div className="dow-label">{DOWS[i][0]}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="card-label section">Notes</div>
+        <ul className="insights">
+          {lines.map((l, i) => (
+            <li key={i}>{l}</li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <circle cx="11" cy="11" r="7" />
+      <line x1="16.5" y1="16.5" x2="21" y2="21" />
+    </svg>
+  );
+}
+
+function SearchOverlay({ store, onClose, go }) {
+  const { state } = store;
+  const [q, setQ] = useState('');
+  const query = q.trim().toLowerCase();
+
+  const exMatches = query ? state.exercises.filter((e) => e.name.toLowerCase().includes(query)).slice(0, 8) : [];
+  const woMatches = query
+    ? [...state.workouts].filter((w) => (w.name || '').toLowerCase().includes(query)).sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 6)
+    : [];
+  const habMatches = query ? state.habits.filter((h) => h.name.toLowerCase().includes(query)) : [];
+  const evMatches = query ? state.events.filter((e) => e.title.toLowerCase().includes(query)).slice(0, 6) : [];
+  const empty = query && !exMatches.length && !woMatches.length && !habMatches.length && !evMatches.length;
+
+  const startWith = (exId) => {
+    if (state.activeWorkout) store.addActiveExercise(exId);
+    else store.startWorkout('Workout', [exId]);
+    go('train');
+  };
+
+  return (
+    <div className="search-overlay">
+      <div className="search-bar">
+        <SearchIcon />
+        <input
+          autoFocus
+          placeholder="Search exercises, workouts, habits…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <button className="ghost" onClick={onClose}>
+          Cancel
+        </button>
+      </div>
+
+      <div className="search-results">
+        {!query && <div className="chart-hint">Find an exercise, a past workout, a habit, or a plan.</div>}
+        {empty && <div className="chart-hint">No matches for “{q}”.</div>}
+
+        {exMatches.length > 0 && (
+          <div className="search-group">
+            <div className="picker-cat">Exercises</div>
+            {exMatches.map((e) => (
+              <button key={e.id} className="search-item" onClick={() => startWith(e.id)}>
+                <span>{e.name}</span>
+                <span className="search-meta">{e.category} · start</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {woMatches.length > 0 && (
+          <div className="search-group">
+            <div className="picker-cat">Workouts</div>
+            {woMatches.map((w) => (
+              <button key={w.id} className="search-item" onClick={() => go('train')}>
+                <span>{w.name}</span>
+                <span className="search-meta">{w.date}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {habMatches.length > 0 && (
+          <div className="search-group">
+            <div className="picker-cat">Habits</div>
+            {habMatches.map((h) => (
+              <button key={h.id} className="search-item" onClick={() => go('habits')}>
+                <span>{h.name}</span>
+                <span className="search-meta">habit</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {evMatches.length > 0 && (
+          <div className="search-group">
+            <div className="picker-cat">Plans</div>
+            {evMatches.map((e) => (
+              <button key={e.id} className="search-item" onClick={() => go('today')}>
+                <span>{e.title}</span>
+                <span className="search-meta">{e.time ? fmt(e.time) : 'today'}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

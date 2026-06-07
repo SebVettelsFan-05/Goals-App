@@ -228,6 +228,8 @@ export function gymStats(workouts, exercises, today = todayStr()) {
     topCategory,
     topSets,
     topDay,
+    catSets, // { category: setCount } over last 30 days
+    byDay: dow, // [Sun..Sat] workout counts over last 30 days
     lastDate: (workouts || []).map((w) => w.date).sort().pop() || null,
   };
 }
