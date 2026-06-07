@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMomentum } from './store.js';
 import { useInstall } from './install.js';
-import { fmt, nowMinutes, streakOf, toMin, todayStr, weightStats, weeklyHabitStats } from './utils.js';
+import { addDays, fmt, nowMinutes, streakOf, toMin, todayStr, weightStats, weeklyHabitStats } from './utils.js';
+
+const lastDays = (n) => Array.from({ length: n }, (_, i) => addDays(todayStr(), -(n - 1 - i)));
+const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 const greeting = (h) => (h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening');
 
@@ -65,6 +68,8 @@ export default function App() {
             <WeightCard store={store} onOpen={() => setTab('weight')} />
 
             <HomeHabits store={store} onManage={() => setTab('habits')} />
+
+            <Heatmap habits={store.state.habits} />
 
             <WeeklyCheckin store={store} />
           </section>
@@ -130,6 +135,7 @@ export default function App() {
                     <div className="info">
                       <div className="name">{h.name}</div>
                       <div className="meta">Reminder {fmt(h.time || '08:00')}</div>
+                      <DotStrip habit={h} />
                     </div>
                     <span className={'streak' + (s >= 3 ? ' hot' : '')}>{s > 0 ? `${s}d` : 'start'}</span>
                   </div>
@@ -349,6 +355,10 @@ function WeightCard({ store, onOpen }) {
         <div className="chart-hint">Log a few days to see your live trend line.</div>
       )}
 
+      {stats && (
+        <GoalBar start={stats.sorted[0]?.value} current={stats.current} goal={target} unit={unit} />
+      )}
+
       <form className="weight-entry" onSubmit={submit}>
         <input
           type="number"
@@ -458,6 +468,10 @@ function WeightView({ store }) {
         <WeightChart stats={stats} target={target} unit={unit} height={190} />
       ) : (
         <div className="chart-hint">Log a few days to see your trend line.</div>
+      )}
+
+      {stats && (
+        <GoalBar start={stats.sorted[0]?.value} current={stats.current} goal={target} unit={unit} />
       )}
 
       {stats && (
@@ -572,6 +586,98 @@ function WeightChart({ stats, target, unit, height = 160 }) {
   );
 }
 
+function ProgressRing({ pct, size = 60, stroke = 6 }) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const off = c * (1 - (pct || 0) / 100);
+  return (
+    <svg width={size} height={size} className="ring" viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={size / 2} cy={size / 2} r={r} className="ring-bg" strokeWidth={stroke} fill="none" />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        className="ring-fg"
+        strokeWidth={stroke}
+        fill="none"
+        strokeDasharray={c}
+        strokeDashoffset={off}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+      <text x="50%" y="50%" className="ring-text" textAnchor="middle" dominantBaseline="central">
+        {pct == null ? '—' : `${pct}%`}
+      </text>
+    </svg>
+  );
+}
+
+function GoalBar({ start, current, goal, unit }) {
+  if (goal == null || start == null || current == null || start <= goal) return null;
+  const total = start - goal;
+  const done = Math.min(Math.max(start - current, 0), total);
+  const pct = Math.round((done / total) * 100);
+  const toGo = Math.max(current - goal, 0);
+  return (
+    <div className="goalbar">
+      <div className="goalbar-head">
+        <span className="accent">{pct}% to goal</span>
+        <span>{toGo.toFixed(1)} {unit} to go</span>
+      </div>
+      <div className="goalbar-track">
+        <div className="goalbar-fill" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="goalbar-ends">
+        <span>start {start.toFixed(1)}</span>
+        <span>goal {goal}</span>
+      </div>
+    </div>
+  );
+}
+
+function Heatmap({ habits, days = 14 }) {
+  if (!habits.length) return null;
+  const cols = lastDays(days);
+  return (
+    <div className="card">
+      <div className="card-label">Consistency · last {days} days</div>
+      <div className="hm-head">
+        <span className="hm-name" />
+        <div className="hm-cells">
+          {cols.map((d) => (
+            <span key={d} className="hm-dow">
+              {DOW[new Date(d + 'T00:00').getDay()]}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="heatmap">
+        {habits.map((h) => (
+          <div className="hm-row" key={h.id}>
+            <div className="hm-name">{h.name}</div>
+            <div className="hm-cells">
+              {cols.map((d) => (
+                <span key={d} className={'hm-cell' + (h.history && h.history[d] ? ' on' : '')} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DotStrip({ habit, days = 7 }) {
+  const cols = lastDays(days);
+  return (
+    <div className="dotstrip">
+      {cols.map((d) => (
+        <span key={d} className={'sdot' + (habit.history && habit.history[d] ? ' on' : '')} />
+      ))}
+    </div>
+  );
+}
+
 function WeeklyCheckin({ store }) {
   const { state } = store;
   const unit = state.goal?.unit || 'lb';
@@ -597,7 +703,7 @@ function WeeklyCheckin({ store }) {
       <div className="card-label">This week</div>
       <div className="checkin-row">
         <div className="checkin-stat">
-          <div className="checkin-num">{ratePct == null ? '—' : `${ratePct}%`}</div>
+          <ProgressRing pct={ratePct} />
           <div className="checkin-label">Habits hit</div>
         </div>
         <div className="checkin-stat">

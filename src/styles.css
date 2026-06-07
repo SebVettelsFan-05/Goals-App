@@ -200,12 +200,40 @@ html, body {
 .goal-row input:focus { border-color: var(--accent); }
 
 /* ---------- WEEKLY CHECK-IN ---------- */
-.checkin-row { display: flex; gap: 10px; margin-top: 4px; }
-.checkin-stat { flex: 1; text-align: center; }
+.checkin-row { display: flex; gap: 10px; margin-top: 4px; align-items: center; }
+.checkin-stat { flex: 1; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
 .checkin-num { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .checkin-num.good { color: var(--good); }
-.checkin-label { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.checkin-label { color: var(--muted); font-size: 12px; }
 .checkin-verdict { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; line-height: 1.5; }
+
+/* ---------- PROGRESS RING ---------- */
+.ring-bg { stroke: var(--surface-2); }
+.ring-fg { stroke: var(--accent); transition: stroke-dashoffset 0.6s ease; }
+.ring-text { fill: var(--text); font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* ---------- GOAL BAR ---------- */
+.goalbar { margin: 6px 0 14px; }
+.goalbar-head { display: flex; justify-content: space-between; font-size: 13px; font-weight: 650; color: var(--muted); margin-bottom: 8px; }
+.goalbar-head .accent { color: var(--accent); }
+.goalbar-track { height: 9px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.goalbar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 999px; transition: width 0.6s ease; }
+.goalbar-ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+/* ---------- HEATMAP ---------- */
+.heatmap { display: flex; flex-direction: column; gap: 6px; }
+.hm-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.hm-row { display: flex; align-items: center; gap: 10px; }
+.hm-name { width: 78px; flex: none; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hm-cells { display: flex; gap: 3px; flex: 1; }
+.hm-cell { flex: 1; aspect-ratio: 1; border-radius: 4px; background: var(--surface-2); }
+.hm-cell.on { background: var(--good); }
+.hm-dow { flex: 1; text-align: center; font-size: 10px; color: var(--muted); }
+
+/* ---------- DOT STRIP (per-habit week) ---------- */
+.dotstrip { display: flex; gap: 5px; margin-top: 8px; }
+.sdot { width: 9px; height: 9px; border-radius: 50%; background: var(--surface-2); }
+.sdot.on { background: var(--good); }
 
 /* ---------- QUICK ADD ---------- */
 .quick-add {
