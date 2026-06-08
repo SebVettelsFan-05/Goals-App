@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMomentum } from './store.js';
 import { useInstall } from './install.js';
 import TrainView from './Train.jsx';
-import { addDays, colorForCategory, fmt, gymStats, nowMinutes, streakOf, stepsStats, toMin, todayStr, weightStats, weeklyHabitStats } from './utils.js';
+import { addDays, colorForCategory, fmt, foodStats, gymStats, improvements, nowMinutes, sleepStats, streakOf, stepsStats, toMin, todayStr, weightStats, weeklyHabitStats } from './utils.js';
 
 const fmtN = (n) => (n == null ? '—' : Math.round(n).toLocaleString());
 
@@ -114,6 +114,8 @@ export default function App() {
             <FocusCard current={current} next={next} count={todaysEvents.length} store={store} />
 
             <Insights store={store} onOpen={() => setInsightsOpen(true)} />
+
+            <ImproveCard store={store} />
 
             <WeightCard store={store} onOpen={() => openBody('weight')} />
 
@@ -481,20 +483,28 @@ function HomeHabits({ store, onManage }) {
   );
 }
 
-/* ---------------- Body tab (weight + steps) ---------------- */
+/* ---------------- Body tab (weight + steps + sleep + food) ---------------- */
 
 function BodyView({ store, sub, setSub }) {
+  const subs = [
+    ['weight', 'Weight'],
+    ['steps', 'Steps'],
+    ['sleep', 'Sleep'],
+    ['food', 'Food'],
+  ];
   return (
     <section className="view">
-      <div className="segmented">
-        <button className={sub === 'weight' ? 'active' : ''} onClick={() => setSub('weight')}>
-          Weight
-        </button>
-        <button className={sub === 'steps' ? 'active' : ''} onClick={() => setSub('steps')}>
-          Steps
-        </button>
+      <div className="segmented four">
+        {subs.map(([key, label]) => (
+          <button key={key} className={sub === key ? 'active' : ''} onClick={() => setSub(key)}>
+            {label}
+          </button>
+        ))}
       </div>
-      {sub === 'weight' ? <WeightView store={store} embedded /> : <StepsView store={store} embedded />}
+      {sub === 'weight' && <WeightView store={store} embedded />}
+      {sub === 'steps' && <StepsView store={store} embedded />}
+      {sub === 'sleep' && <SleepView store={store} embedded />}
+      {sub === 'food' && <FoodView store={store} embedded />}
     </section>
   );
 }
@@ -508,6 +518,8 @@ function useInsights(store) {
   const target = state.goal?.target ?? null;
   const w = useMemo(() => weightStats(state.weights, target), [state.weights, target]);
   const st = useMemo(() => stepsStats(state.steps, state.stepGoal || 10000), [state.steps, state.stepGoal]);
+  const sl = useMemo(() => sleepStats(state.sleep, state.sleepGoal || 8), [state.sleep, state.sleepGoal]);
+  const fd = useMemo(() => foodStats(state.meals, state.calorieGoal || 2000), [state.meals, state.calorieGoal]);
   const hab = useMemo(() => weeklyHabitStats(state.habits), [state.habits]);
   const gym = useMemo(() => gymStats(state.workouts, state.exercises), [state.workouts, state.exercises]);
 
@@ -516,6 +528,8 @@ function useInsights(store) {
     { key: 'train', value: gym.count7, label: 'workouts/wk' },
     { key: 'weight', value: w ? `${w.ratePerWeek > 0 ? '+' : ''}${w.ratePerWeek.toFixed(1)}` : '—', label: `${unit}/wk`, good: losing },
     { key: 'steps', value: st ? `${(st.weekAvg / 1000).toFixed(1)}k` : '—', label: 'steps/day' },
+    { key: 'sleep', value: sl ? `${sl.weekAvg}h` : '—', label: 'sleep' },
+    { key: 'food', value: fd.daysLogged ? fd.weekAvg.toLocaleString() : '—', label: 'kcal/day' },
     { key: 'habits', value: hab.rate == null ? '—' : `${Math.round(hab.rate * 100)}%`, label: 'habits' },
   ];
 
@@ -524,6 +538,8 @@ function useInsights(store) {
   else lines.push('No workouts logged in the last 7 days — time to train.');
   if (w && Math.abs(w.ratePerWeek) >= 0.05) lines.push(`Weight ${w.ratePerWeek < 0 ? 'down' : 'up'} ${Math.abs(w.ratePerWeek).toFixed(1)} ${unit}/wk.`);
   if (st) lines.push(`Averaging ${st.weekAvg.toLocaleString()} steps/day (${st.daysHitWeek}/7 days at goal).`);
+  if (sl) lines.push(`Sleeping ${sl.weekAvg}h/night (${sl.nightsHit}/7 nights at goal).`);
+  if (fd.daysLogged) lines.push(`Calories ~${fd.weekAvg.toLocaleString()}/day (under goal ${fd.daysUnder}/${fd.daysLogged} logged days).`);
   if (hab.rate != null) lines.push(`Habits ${Math.round(hab.rate * 100)}% this week${hab.bestStreak ? ` · best streak ${hab.bestStreak}d` : ''}.`);
   if (gym.topDay != null && gym.count30 >= 3) lines.push(`You train most on ${DOWS[gym.topDay]}s.`);
 
@@ -568,8 +584,43 @@ function Insights({ store, onOpen }) {
   );
 }
 
+const sevColor = (s) => (s >= 0.5 ? '#ff6b6b' : s >= 0.3 ? 'var(--warn)' : 'var(--c-steps)');
+
+function ImproveList({ items }) {
+  return (
+    <ul className="improve-list">
+      {items.map((it) => (
+        <li key={it.key}>
+          <div className="improve-top">
+            <span className="improve-dot" style={{ background: sevColor(it.severity) }} />
+            <b>{it.label}</b> — {it.detail}
+          </div>
+          <div className="improve-sug">{it.suggestion}</div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ImproveCard({ store }) {
+  const items = useMemo(() => improvements(store.state), [store.state]);
+  return (
+    <div className="card">
+      <div className="card-label">Where to focus</div>
+      {items.length === 0 ? (
+        <div className="chart-hint" style={{ textAlign: 'left', padding: '12px 0 2px' }}>
+          You’re on track across the board. Keep it up.
+        </div>
+      ) : (
+        <ImproveList items={items.slice(0, 3)} />
+      )}
+    </div>
+  );
+}
+
 function InsightsView({ store, onClose }) {
   const { tiles, lines, gym } = useInsights(store);
+  const items = useMemo(() => improvements(store.state), [store.state]);
   const cats = Object.entries(gym.catSets || {}).sort((a, b) => b[1] - a[1]);
   const maxSets = cats.length ? cats[0][1] : 0;
   const maxDay = Math.max(1, ...gym.byDay);
@@ -585,6 +636,13 @@ function InsightsView({ store, onClose }) {
         </div>
 
         <MetricTiles tiles={tiles} />
+
+        {items.length > 0 && (
+          <>
+            <div className="card-label section">Where to focus</div>
+            <ImproveList items={items} />
+          </>
+        )}
 
         <div className="card-label section">Training by muscle · 30 days</div>
         {cats.length === 0 ? (
@@ -971,7 +1029,10 @@ function DotStrip({ habit, days = 7 }) {
 
 const kfmt = (n) => (n % 1000 === 0 ? `${n / 1000}k` : `${(n / 1000).toFixed(1)}k`);
 
-function StepsChart({ data, goal, height = 160 }) {
+/* Reusable daily bar chart.
+   mode 'hitHigh' (steps/sleep): >= goal is good (bright), else faded.
+   mode 'underGood' (calories): <= goal is good (color), over is `overColor`. */
+function BarChart({ data, goal, height = 160, color = 'var(--accent)', overColor, mode = 'hitHigh', goalLabel }) {
   const W = 340;
   const H = height;
   const pad = { l: 6, r: 6, t: 16, b: 14 };
@@ -985,14 +1046,17 @@ function StepsChart({ data, goal, height = 160 }) {
   const goalY = baseY - (goal / top) * chartH;
 
   return (
-    <svg className="steps-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Daily steps">
+    <svg className="steps-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Daily chart">
       <line x1={pad.l} y1={goalY} x2={W - pad.r} y2={goalY} className="goal-line" />
       <text x={pad.l} y={goalY - 4} className="goal-tag" textAnchor="start">
-        goal {kfmt(goal)}
+        {goalLabel || `goal ${goal}`}
       </text>
       {data.map((d, i) => {
         const h = (d.value / top) * chartH;
         const x = pad.l + slot * i + (slot - bw) / 2;
+        const over = mode === 'underGood' && d.value > goal;
+        const good = mode === 'underGood' ? d.value > 0 && d.value <= goal : d.value >= goal;
+        const fill = over ? overColor || '#ff6b6b' : color;
         return (
           <rect
             key={d.date}
@@ -1001,7 +1065,8 @@ function StepsChart({ data, goal, height = 160 }) {
             width={bw}
             height={Math.max(h, 0)}
             rx="3"
-            className={'bar' + (d.value >= goal ? ' hit' : '')}
+            className="bar"
+            style={{ fill, opacity: good || over ? 1 : 0.3 }}
           />
         );
       })}
@@ -1044,7 +1109,7 @@ function StepsCard({ store, onOpen }) {
       </div>
 
       {stats ? (
-        <StepsChart data={stats.last14} goal={goal} />
+        <BarChart data={stats.last14} goal={goal} color="var(--c-steps)" goalLabel={`goal ${kfmt(goal)}`} />
       ) : (
         <div className="chart-hint">Log your steps to see your daily bars.</div>
       )}
@@ -1114,7 +1179,7 @@ function StepsView({ store, embedded }) {
       </div>
 
       {stats ? (
-        <StepsChart data={stats.last14} goal={goal} height={190} />
+        <BarChart data={stats.last14} goal={goal} height={190} color="var(--c-steps)" goalLabel={`goal ${kfmt(goal)}`} />
       ) : (
         <div className="chart-hint">Log a few days to see your daily bars.</div>
       )}
@@ -1157,6 +1222,226 @@ function StepsView({ store, embedded }) {
             onChange={(e) => setGoalInput(e.target.value)}
           />
           <button className="btn-soft inline" onClick={() => store.setStepGoal(goalInput)}>
+            Set
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SleepView({ store, embedded }) {
+  const { state } = store;
+  const goal = state.sleepGoal || 8;
+  const [entry, setEntry] = useState('');
+  const [goalInput, setGoalInput] = useState(String(goal));
+  const stats = useMemo(() => sleepStats(state.sleep, goal), [state.sleep, goal]);
+  const todayVal = (state.sleep || []).find((s) => s.date === todayStr())?.hours;
+  const hitToday = todayVal != null && todayVal >= goal;
+
+  const submit = (e) => {
+    e.preventDefault();
+    if (entry.trim()) {
+      store.logSleep(entry);
+      setEntry('');
+    }
+  };
+
+  let verdict = null;
+  if (stats) {
+    if (stats.nightsHit >= 5) verdict = 'Well rested — keep the routine.';
+    else if (stats.nightsHit >= 2) verdict = 'Decent. Aim for more consistent nights.';
+    else verdict = 'Prioritize sleep — it drives everything else.';
+  }
+
+  return (
+    <section className={embedded ? '' : 'view'}>
+      {!embedded && (
+        <header className="view-header">
+          <h1>Sleep</h1>
+        </header>
+      )}
+
+      <div className="stat-grid">
+        <div className="stat">
+          <div className={'stat-num' + (hitToday ? ' good' : '')}>{stats?.todayVal != null ? `${stats.todayVal}h` : '—'}</div>
+          <div className="stat-label">Last night</div>
+        </div>
+        <div className="stat">
+          <div className="stat-num">{stats ? `${stats.weekAvg}h` : '—'}</div>
+          <div className="stat-label">7-day avg</div>
+        </div>
+        <div className="stat">
+          <div className="stat-num">{goal}h</div>
+          <div className="stat-label">Goal</div>
+        </div>
+      </div>
+
+      {stats ? (
+        <BarChart data={stats.last14} goal={goal} height={190} color="var(--c-sleep)" goalLabel={`goal ${goal}h`} />
+      ) : (
+        <div className="chart-hint">Log a few nights to see your sleep bars.</div>
+      )}
+
+      {stats && (
+        <div className="projection">
+          Hit your goal <b>{stats.nightsHit}/7</b> nights
+          {stats.streak > 0 ? (
+            <>
+              {' '}· <b>{stats.streak}-night</b> streak
+            </>
+          ) : null}
+          . {verdict}
+        </div>
+      )}
+
+      <form className="weight-entry" onSubmit={submit}>
+        <input
+          type="number"
+          inputMode="decimal"
+          step="0.5"
+          placeholder={todayVal != null ? `Logged ${todayVal}h — update?` : 'Hours slept last night'}
+          value={entry}
+          onChange={(e) => setEntry(e.target.value)}
+        />
+        <button type="submit" className="btn-primary">
+          {todayVal != null ? 'Update' : 'Log'}
+        </button>
+      </form>
+
+      <div className="goal-row">
+        <label>Nightly sleep goal (hours)</label>
+        <div>
+          <input
+            type="number"
+            inputMode="decimal"
+            step="0.5"
+            placeholder="e.g. 8"
+            value={goalInput}
+            onChange={(e) => setGoalInput(e.target.value)}
+          />
+          <button className="btn-soft inline" onClick={() => store.setSleepGoal(goalInput)}>
+            Set
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FoodView({ store, embedded }) {
+  const { state } = store;
+  const goal = state.calorieGoal || 2000;
+  const [label, setLabel] = useState('');
+  const [kcal, setKcal] = useState('');
+  const [goalInput, setGoalInput] = useState(String(goal));
+  const stats = useMemo(() => foodStats(state.meals, goal), [state.meals, goal]);
+  const hasData = (state.meals || []).length > 0;
+  const overToday = stats.todayTotal > goal;
+
+  const addMeal = (e) => {
+    e.preventDefault();
+    if (kcal.trim()) {
+      store.addMeal(label, kcal);
+      setLabel('');
+      setKcal('');
+    }
+  };
+
+  let verdict = null;
+  if (stats.daysLogged >= 2) {
+    verdict =
+      stats.daysUnder >= Math.ceil(stats.daysLogged * 0.7)
+        ? 'On point — staying within budget.'
+        : 'Tighten it up — aim to stay under most days.';
+  }
+
+  return (
+    <section className={embedded ? '' : 'view'}>
+      {!embedded && (
+        <header className="view-header">
+          <h1>Food</h1>
+        </header>
+      )}
+
+      <div className="stat-grid">
+        <div className="stat">
+          <div className={'stat-num' + (stats.hasToday && !overToday ? ' good' : '')}>
+            {stats.hasToday ? stats.todayTotal.toLocaleString() : '—'}
+          </div>
+          <div className="stat-label">Today</div>
+        </div>
+        <div className="stat">
+          <div className="stat-num">{stats.daysLogged ? stats.weekAvg.toLocaleString() : '—'}</div>
+          <div className="stat-label">7-day avg</div>
+        </div>
+        <div className="stat">
+          <div className="stat-num">{goal.toLocaleString()}</div>
+          <div className="stat-label">Goal</div>
+        </div>
+      </div>
+
+      {hasData ? (
+        <BarChart
+          data={stats.last14}
+          goal={goal}
+          height={190}
+          color="var(--good)"
+          overColor="#ff6b6b"
+          mode="underGood"
+          goalLabel={`goal ${goal.toLocaleString()}`}
+        />
+      ) : (
+        <div className="chart-hint">Add meals to see your daily calories.</div>
+      )}
+
+      {stats.hasToday && (
+        <div className={'cal-line' + (overToday ? ' over' : '')}>
+          {stats.todayTotal.toLocaleString()} / {goal.toLocaleString()} kcal ·{' '}
+          {overToday ? `${(stats.todayTotal - goal).toLocaleString()} over` : `${(goal - stats.todayTotal).toLocaleString()} left`}
+        </div>
+      )}
+
+      {verdict && (
+        <div className="projection">
+          Under goal <b>{stats.daysUnder}/{stats.daysLogged}</b> logged days. {verdict}
+        </div>
+      )}
+
+      <form className="meal-add" onSubmit={addMeal}>
+        <input className="meal-label" type="text" placeholder="Meal (optional)" value={label} onChange={(e) => setLabel(e.target.value)} />
+        <input className="meal-kcal" type="number" inputMode="numeric" step="10" placeholder="kcal" value={kcal} onChange={(e) => setKcal(e.target.value)} />
+        <button type="submit" className="btn-primary">
+          Add
+        </button>
+      </form>
+
+      {stats.todayMeals.length > 0 && (
+        <div className="meal-list">
+          {stats.todayMeals.map((m) => (
+            <div className="meal-row" key={m.id}>
+              <span className="meal-name">{m.label}</span>
+              <span className="meal-cal">{m.kcal.toLocaleString()}</span>
+              <button className="set-x" onClick={() => store.deleteMeal(m.id)}>
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="goal-row">
+        <label>Daily calorie goal</label>
+        <div>
+          <input
+            type="number"
+            inputMode="numeric"
+            step="50"
+            placeholder="e.g. 2000"
+            value={goalInput}
+            onChange={(e) => setGoalInput(e.target.value)}
+          />
+          <button className="btn-soft inline" onClick={() => store.setCalorieGoal(goalInput)}>
             Set
           </button>
         </div>

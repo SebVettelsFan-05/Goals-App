@@ -11,6 +11,8 @@
   --warn: #f5b94a;
   --c-steps: #22b8cf;
   --c-habit: #fab005;
+  --c-sleep: #748ffc;
+  --c-food: #51cf66;
   --line: #242a36;
   --radius: 20px;
   --shadow: 0 14px 40px -22px rgba(0, 0, 0, 0.7);
@@ -263,8 +265,8 @@ html, body {
 .streak-chip { display: inline-block; margin-left: 8px; background: var(--surface-2); color: var(--muted); border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 700; vertical-align: middle; }
 .embed-head { display: flex; justify-content: flex-end; margin: 0 0 14px; }
 
-.metric-tiles { display: flex; gap: 8px; }
-.metric-tile { flex: 1; background: var(--surface-2); border-radius: 13px; padding: 12px 6px; text-align: center; }
+.metric-tiles { display: flex; flex-wrap: wrap; gap: 8px; }
+.metric-tile { flex: 1 1 calc(33.333% - 6px); min-width: 84px; background: var(--surface-2); border-radius: 13px; padding: 12px 6px; text-align: center; }
 .metric-value { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .metric-value.good { color: var(--good); }
 .metric-label { color: var(--muted); font-size: 11px; margin-top: 3px; }
@@ -274,10 +276,20 @@ html, body {
 .m-weight { background: color-mix(in srgb, var(--good) 11%, var(--surface-2)); }
 .m-steps { background: color-mix(in srgb, var(--c-steps) 13%, var(--surface-2)); }
 .m-steps .metric-value { color: var(--c-steps); }
+.m-sleep { background: color-mix(in srgb, var(--c-sleep) 14%, var(--surface-2)); }
+.m-sleep .metric-value { color: var(--c-sleep); }
+.m-food { background: color-mix(in srgb, var(--c-food) 13%, var(--surface-2)); }
+.m-food .metric-value { color: var(--c-food); }
 .m-habits { background: color-mix(in srgb, var(--c-habit) 14%, var(--surface-2)); }
 .m-habits .metric-value { color: var(--c-habit); }
 
 .cat-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+
+/* Where to focus */
+.improve-list { list-style: none; display: flex; flex-direction: column; gap: 14px; }
+.improve-top { font-size: 15px; line-height: 1.4; }
+.improve-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+.improve-sug { color: var(--muted); font-size: 13px; line-height: 1.45; margin-top: 4px; padding-left: 16px; }
 
 /* Insights detail sheet */
 .sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
@@ -309,6 +321,20 @@ html, body {
 .segmented { display: flex; gap: 4px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 14px; padding: 4px; margin: 8px 0 18px; }
 .segmented button { flex: 1; background: none; border: none; color: var(--muted); font-size: 15px; font-weight: 650; padding: 10px; border-radius: 10px; cursor: pointer; transition: 0.15s; }
 .segmented button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.segmented.four button { font-size: 14px; padding: 9px 4px; }
+
+/* Food */
+.cal-line { text-align: center; color: var(--muted); font-size: 14px; font-weight: 600; margin: -2px 0 14px; font-variant-numeric: tabular-nums; }
+.cal-line.over { color: #ff6b6b; }
+.meal-add { display: flex; gap: 8px; margin-bottom: 12px; }
+.meal-add .meal-label { flex: 1; min-width: 0; background: var(--surface-2); border: 1px solid var(--line); color: var(--text); border-radius: 12px; padding: 13px 14px; font-size: 15px; outline: none; }
+.meal-add .meal-kcal { width: 86px; flex: none; background: var(--surface-2); border: 1px solid var(--line); color: var(--text); border-radius: 12px; padding: 13px 10px; font-size: 15px; outline: none; text-align: center; }
+.meal-add input:focus { border-color: var(--accent); }
+.meal-add .btn-primary { padding: 0 18px; }
+.meal-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+.meal-row { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.meal-name { flex: 1; font-size: 15px; }
+.meal-cal { color: var(--muted); font-weight: 700; font-variant-numeric: tabular-nums; }
 
 /* ---------- TRAIN ---------- */
 .btn-primary.wide { width: 100%; margin-bottom: 8px; }

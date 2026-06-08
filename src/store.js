@@ -41,6 +41,10 @@ function fresh() {
     routines: [],
     workouts: [],
     activeWorkout: null,
+    meals: [],
+    calorieGoal: 2000,
+    sleep: [],
+    sleepGoal: 8,
   };
 }
 
@@ -406,6 +410,37 @@ export function useMomentum() {
   const deleteWorkout = (id) =>
     setState((p) => ({ ...p, workouts: (p.workouts || []).filter((w) => w.id !== id) }));
 
+  // ---- Food (calorie estimate) ----
+  const addMeal = (label, kcal) =>
+    setState((p) => {
+      const k = Math.round(parseFloat(kcal));
+      if (!isFinite(k) || k <= 0) return p;
+      return {
+        ...p,
+        meals: [...(p.meals || []), { id: uid(), date: todayStr(), label: (label || '').trim() || 'Meal', kcal: k }],
+      };
+    });
+  const deleteMeal = (id) =>
+    setState((p) => ({ ...p, meals: (p.meals || []).filter((m) => m.id !== id) }));
+  const setCalorieGoal = (value) => {
+    const v = Math.round(parseFloat(value));
+    if (isFinite(v) && v > 0) setState((p) => ({ ...p, calorieGoal: v }));
+  };
+
+  // ---- Sleep ----
+  const logSleep = (hours) =>
+    setState((p) => {
+      const v = parseFloat(hours);
+      if (!isFinite(v) || v < 0 || v > 24) return p;
+      const d = todayStr();
+      const others = (p.sleep || []).filter((s) => s.date !== d);
+      return { ...p, sleep: [...others, { date: d, hours: Math.round(v * 10) / 10 }] };
+    });
+  const setSleepGoal = (value) => {
+    const v = parseFloat(value);
+    if (isFinite(v) && v > 0 && v <= 14) setState((p) => ({ ...p, sleepGoal: v }));
+  };
+
   const seedLeanPack = () =>
     setState((p) => {
       const existing = new Set(p.habits.map((h) => h.name));
@@ -459,6 +494,11 @@ export function useMomentum() {
     cancelWorkout,
     finishWorkout,
     deleteWorkout,
+    addMeal,
+    deleteMeal,
+    setCalorieGoal,
+    logSleep,
+    setSleepGoal,
     seedLeanPack,
     enableNotifications,
   };

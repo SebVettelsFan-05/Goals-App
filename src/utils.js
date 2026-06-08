@@ -154,6 +154,87 @@ export function stepsStats(steps, goal = 10000) {
   return { last14, last7, weekAvg, daysHitWeek, todayVal, streak, goal };
 }
 
+// Daily calorie estimates (accountability — staying at/under goal).
+export function foodStats(meals, goal = 2000, today = todayStr()) {
+  const list = meals || [];
+  const totals = {};
+  list.forEach((m) => { totals[m.date] = (totals[m.date] || 0) + (m.kcal || 0); });
+  const span = (n) => Array.from({ length: n }, (_, i) => addDays(today, -(n - 1 - i)));
+  const last14 = span(14).map((d) => ({ date: d, value: totals[d] || 0 }));
+  const days7 = span(7);
+  const logged7 = days7.filter((d) => totals[d] != null);
+  const weekAvg = logged7.length ? Math.round(logged7.reduce((a, d) => a + totals[d], 0) / logged7.length) : 0;
+  const daysUnder = days7.filter((d) => totals[d] != null && totals[d] <= goal).length;
+  return {
+    last14,
+    weekAvg,
+    daysUnder,
+    daysLogged: logged7.length,
+    todayTotal: totals[today] || 0,
+    todayMeals: list.filter((m) => m.date === today),
+    hasToday: totals[today] != null,
+    goal,
+  };
+}
+
+// Nightly sleep hours.
+export function sleepStats(sleep, goal = 8, today = todayStr()) {
+  const list = sleep || [];
+  if (!list.length) return null;
+  const map = {};
+  list.forEach((s) => { map[s.date] = s.hours; });
+  const span = (n) => Array.from({ length: n }, (_, i) => addDays(today, -(n - 1 - i)));
+  const last14 = span(14).map((d) => ({ date: d, value: map[d] || 0 }));
+  const days7 = span(7);
+  const logged7 = days7.filter((d) => map[d] != null);
+  const weekAvg = logged7.length ? Math.round((logged7.reduce((a, d) => a + map[d], 0) / logged7.length) * 10) / 10 : 0;
+  const nightsHit = days7.filter((d) => map[d] != null && map[d] >= goal).length;
+  let streak = 0;
+  let cur = today;
+  while ((map[cur] || 0) >= goal) { streak++; cur = addDays(cur, -1); }
+  return { last14, weekAvg, nightsHit, todayVal: map[today] ?? null, streak, goal };
+}
+
+// Rank the areas most in need of attention into actionable items.
+export function improvements(state) {
+  const items = [];
+  const unit = state.goal?.unit || 'lb';
+  const target = state.goal?.target ?? null;
+  const w = weightStats(state.weights, target);
+  const st = stepsStats(state.steps, state.stepGoal || 10000);
+  const sl = sleepStats(state.sleep, state.sleepGoal || 8);
+  const fd = foodStats(state.meals, state.calorieGoal || 2000);
+  const hab = weeklyHabitStats(state.habits);
+  const gym = gymStats(state.workouts, state.exercises);
+
+  if (sl && sl.weekAvg > 0 && sl.weekAvg < sl.goal - 0.5) {
+    items.push({ key: 'sleep', label: 'Sleep', detail: `averaging ${sl.weekAvg}h vs ${sl.goal}h goal`, suggestion: 'Set an earlier wind-down and keep a consistent bedtime.', severity: (sl.goal - sl.weekAvg) / sl.goal });
+  }
+  if (fd.daysLogged >= 2) {
+    const over = fd.daysLogged - fd.daysUnder;
+    if (over >= Math.ceil(fd.daysLogged / 2)) {
+      items.push({ key: 'food', label: 'Calories', detail: `over goal ${over}/${fd.daysLogged} logged days`, suggestion: 'Tighten portions and log everything — even rough estimates.', severity: 0.5 + over / 14 });
+    }
+  }
+  if (st && st.daysHitWeek < 4) {
+    items.push({ key: 'steps', label: 'Steps', detail: `only ${st.daysHitWeek}/7 days at goal`, suggestion: 'Add one daily walk — even 15 minutes helps.', severity: ((4 - st.daysHitWeek) / 4) * 0.6 });
+  }
+  if (gym.count7 < 3) {
+    items.push({ key: 'train', label: 'Training', detail: `${gym.count7} session${gym.count7 === 1 ? '' : 's'} this week`, suggestion: `Get ${3 - gym.count7} more in to hit 3.`, severity: ((3 - gym.count7) / 3) * 0.7 });
+  }
+  if (hab.rate != null && hab.rate < 0.7) {
+    items.push({ key: 'habits', label: 'Habits', detail: `${Math.round(hab.rate * 100)}% this week`, suggestion: 'Pick one habit to nail every single day.', severity: 0.7 - hab.rate });
+  }
+  if (w && target != null) {
+    if (w.current > target && w.ratePerWeek >= -0.01) {
+      items.push({ key: 'weight', label: 'Weight', detail: 'not trending down yet', suggestion: 'Re-check your calorie deficit — the trend is flat.', severity: 0.55 });
+    } else if (w.pctPerWeek > 1.0) {
+      items.push({ key: 'weight', label: 'Weight', detail: `cutting ${w.pctPerWeek.toFixed(1)}%/wk (fast)`, suggestion: `Ease the deficit to protect muscle (~0.5–1%/wk).`, severity: 0.45 });
+    }
+  }
+  return items.sort((a, b) => b.severity - a.severity);
+}
+
 // Habit consistency over the last 7 days (including today).
 export function weeklyHabitStats(habits, today = todayStr()) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(today, -i));
